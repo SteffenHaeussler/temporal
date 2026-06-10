@@ -63,9 +63,13 @@ Temporal Web UI at http://localhost:8233.
 ## Tests
 
 ```bash
-uv run pytest
+make test
+make coverage
 ```
 
 Workflow tests run against Temporal's time-skipping test environment, so the
 "wait 24 hours for approval" path completes instantly. The first run downloads
 a test-server binary; no Temporal CLI, server, or Docker is needed for tests.
+
+`make test` runs the normal suite. `make coverage` runs the same suite with a
+terminal coverage report and missing-line details.
