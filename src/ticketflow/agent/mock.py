@@ -60,6 +60,7 @@ class MockAgent:
             raise AgentOverloadedError("mock agent backend overloaded")
 
     async def classify(self, ticket: Ticket) -> Classification:
+        self._maybe_fail()
         text = f"{ticket.subject} {ticket.body}".lower()
         category = next(
             (category for keyword, category in KEYWORD_CATEGORIES.items() if keyword in text),
