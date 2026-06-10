@@ -27,8 +27,8 @@ Run the test suite:
 make test
 ```
 
-At this scaffold stage, pytest reports `no tests ran` and exits with code 5.
-That is expected until the first tests are added in the next task.
+At the current stage, pytest runs the model tests added with the data-model
+task and should pass.
 
 ## Temporal Dev Server
 
