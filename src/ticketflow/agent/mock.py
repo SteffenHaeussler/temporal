@@ -4,6 +4,7 @@ import random
 
 from ticketflow.models import Classification, Ticket, TicketCategory
 
+# Multiple keywords can indicate the same support category.
 KEYWORD_CATEGORIES: dict[str, TicketCategory] = {
     "refund": TicketCategory.BILLING,
     "money": TicketCategory.BILLING,
