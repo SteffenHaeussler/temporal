@@ -1,10 +1,13 @@
-.PHONY: install test server server-docker worker api ticket status approve reject
+.PHONY: install test coverage server server-docker worker api ticket status approve reject
 
 install:
 	uv sync
 
 test:
 	uv run pytest
+
+coverage:
+	uv run pytest --cov=ticketflow --cov-report=term-missing
 
 ## --- run the stack (one target per terminal) ---
 
