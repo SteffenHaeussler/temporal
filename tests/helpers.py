@@ -1,7 +1,13 @@
 """Test doubles and factories shared across test modules."""
 
+import asyncio
 import uuid
 
+from temporalio.client import Client, WorkflowHandle
+from temporalio.worker import Worker
+
+from ticketflow.activities import TicketActivities
+from ticketflow.agent.base import Agent
 from ticketflow.agent.base import AgentOverloadedError
 from ticketflow.models import (
     ActionType,
@@ -10,7 +16,9 @@ from ticketflow.models import (
     ProposedAction,
     Ticket,
     TicketCategory,
+    TicketStatus,
 )
+from ticketflow.workflows import TicketWorkflow
 
 
 def make_ticket(**overrides) -> Ticket:
@@ -83,3 +91,29 @@ class FlakyAgent:
         self, ticket: Ticket, classification: Classification
     ) -> DraftReply:
         return await self.inner.draft_reply(ticket, classification)
+
+
+def make_worker(client: Client, agent: Agent, task_queue: str) -> Worker:
+    acts = TicketActivities(agent)
+    return Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[TicketWorkflow],
+        activities=[
+            acts.classify_ticket,
+            acts.draft_reply,
+            acts.send_reply,
+            acts.execute_refund,
+        ],
+    )
+
+
+async def wait_for_status(
+    handle: WorkflowHandle, expected: TicketStatus, attempts: int = 100
+):
+    for _ in range(attempts):
+        info = await handle.query(TicketWorkflow.status)
+        if info.status == expected:
+            return info
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"workflow never reached status {expected}")
