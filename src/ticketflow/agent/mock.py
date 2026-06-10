@@ -2,6 +2,7 @@
 
 import random
 
+from ticketflow.agent.base import AgentOverloadedError
 from ticketflow.models import Classification, Ticket, TicketCategory
 
 # Multiple keywords can indicate the same support category.
@@ -29,7 +30,12 @@ class MockAgent:
         self._failure_rate = failure_rate
         self._refund_rate = refund_rate
 
+    def _maybe_fail(self) -> None:
+        if self._rng.random() < self._failure_rate:
+            raise AgentOverloadedError("mock agent backend overloaded")
+
     async def classify(self, ticket: Ticket) -> Classification:
+        self._maybe_fail()
         text = f"{ticket.subject} {ticket.body}".lower()
         category = next(
             (category for keyword, category in KEYWORD_CATEGORIES.items() if keyword in text),

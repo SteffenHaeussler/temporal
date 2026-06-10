@@ -1,3 +1,6 @@
+import pytest
+
+from ticketflow.agent.base import AgentOverloadedError
 from ticketflow.agent.mock import MockAgent
 from ticketflow.models import Ticket, TicketCategory
 
@@ -29,3 +32,25 @@ async def test_falls_back_to_general_category():
     result = await agent.classify(make_ticket(subject="hello", body="just saying hi"))
 
     assert result.category == TicketCategory.GENERAL
+
+
+async def test_raises_transient_error_when_failure_rate_is_one():
+    agent = MockAgent(seed=1, failure_rate=1.0)
+
+    with pytest.raises(AgentOverloadedError):
+        await agent.classify(make_ticket())
+
+
+async def test_never_fails_when_failure_rate_is_zero():
+    agent = MockAgent(seed=1, failure_rate=0.0)
+
+    for _ in range(50):
+        await agent.classify(make_ticket())
+
+
+async def test_same_seed_produces_same_classification():
+    ticket = make_ticket(subject="refund please")
+    a = MockAgent(seed=42, failure_rate=0.0)
+    b = MockAgent(seed=42, failure_rate=0.0)
+
+    assert await a.classify(ticket) == await b.classify(ticket)
