@@ -75,7 +75,11 @@ async def test_ticket_lifecycle_via_api(env):
 
             approved = await http.post(
                 f"/tickets/{ticket_id}/approval",
-                json={"approved": True, "note": "looks good"},
+                json={
+                    "approved": True,
+                    "approver": "sam@example.com",
+                    "note": "looks good",
+                },
             )
             assert approved.status_code == 200
             assert approved.json() == {"status": TicketStatus.RESOLVED}
@@ -87,6 +91,7 @@ async def test_ticket_lifecycle_via_api(env):
                 await asyncio.sleep(0.1)
             else:
                 raise AssertionError("ticket never resolved")
+            assert status.json()["decision"]["approver"] == "sam@example.com"
 
 
 async def test_unknown_ticket_returns_404(env):
@@ -101,7 +106,7 @@ async def test_approval_on_unknown_ticket_returns_404(env):
     async with http_client() as http:
         response = await http.post(
             "/tickets/does-not-exist/approval",
-            json={"approved": True},
+            json={"approved": True, "approver": "sam@example.com"},
         )
     assert response.status_code == 404
 
@@ -123,7 +128,11 @@ async def test_approval_on_resolved_ticket_returns_409(env):
         async with http_client() as http:
             response = await http.post(
                 f"/tickets/{ticket.id}/approval",
-                json={"approved": True, "note": "too late"},
+                json={
+                    "approved": True,
+                    "approver": "sam@example.com",
+                    "note": "too late",
+                },
             )
     assert response.status_code == 409
     assert response.json()["detail"] == "ticket already decided"
