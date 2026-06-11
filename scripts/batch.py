@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable, Iterable
 import httpx
 
 SETTLED_STATUSES = {"resolved", "escalated", "rejected", "awaiting_approval"}
+TRANSIENT_STATUS_CODES = {500, 502, 503, 504}
 
 KEYWORD_TEMPLATES = [
     {
@@ -85,7 +86,12 @@ async def poll_ticket_statuses(
             raise BatchTimeoutError(f"Timed out waiting for tickets: {waiting}")
 
         for ticket_id in sorted(pending):
-            response = await client.get(f"/tickets/{ticket_id}")
+            try:
+                response = await client.get(f"/tickets/{ticket_id}")
+            except httpx.TimeoutException:
+                continue
+            if response.status_code in TRANSIENT_STATUS_CODES:
+                continue
             response.raise_for_status()
             status = str(response.json()["status"])
             statuses[ticket_id] = status

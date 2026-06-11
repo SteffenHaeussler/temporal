@@ -24,6 +24,8 @@ with workflow.unsafe.imports_passed_through():
 CONFIDENCE_THRESHOLD = 0.75
 APPROVAL_TIMEOUT = timedelta(hours=24)
 ACTIVITY_TIMEOUT = timedelta(seconds=30)
+AGENT_ACTIVITY_TIMEOUT = timedelta(minutes=2)
+AGENT_HEARTBEAT_TIMEOUT = timedelta(seconds=30)
 RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
@@ -60,7 +62,8 @@ class TicketWorkflow:
             self._classification = await workflow.execute_activity_method(
                 TicketActivities.classify_ticket,
                 ticket,
-                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                start_to_close_timeout=AGENT_ACTIVITY_TIMEOUT,
+                heartbeat_timeout=AGENT_HEARTBEAT_TIMEOUT,
                 retry_policy=RETRY_POLICY,
             )
         except ActivityError:
@@ -75,7 +78,8 @@ class TicketWorkflow:
             self._draft = await workflow.execute_activity_method(
                 TicketActivities.draft_reply,
                 args=[ticket, self._classification],
-                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                start_to_close_timeout=AGENT_ACTIVITY_TIMEOUT,
+                heartbeat_timeout=AGENT_HEARTBEAT_TIMEOUT,
                 retry_policy=RETRY_POLICY,
             )
         except ActivityError:

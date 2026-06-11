@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from temporalio.client import WorkflowQueryFailedError
 from temporalio.service import RPCError, RPCStatusCode
 
 from tests.helpers import (
@@ -325,6 +326,16 @@ class QueryUnreachableClient:
         raise RPCError("query failed", self._status, b"")
 
 
+class QueryFailedClient:
+    """Simulates a worker that rejects a status query during replay."""
+
+    def get_workflow_handle_for(self, _run, _workflow_id):
+        return SimpleNamespace(query=self._query)
+
+    async def _query(self, *_args, **_kwargs):
+        raise WorkflowQueryFailedError("query failed")
+
+
 def stored_result(ticket_id: str) -> TicketResult:
     return TicketResult(
         ticket_id=ticket_id,
@@ -372,9 +383,21 @@ async def test_get_ticket_falls_back_to_read_model_when_worker_is_down(status):
     assert response.json()["status"] == TicketStatus.RESOLVED
 
 
-async def test_get_ticket_query_timeout_without_read_model_is_an_error():
+async def test_get_ticket_query_timeout_without_read_model_returns_503():
     app.state.temporal = QueryUnreachableClient(RPCStatusCode.DEADLINE_EXCEEDED)
 
     async with http_client() as http:
-        with pytest.raises(RPCError):
-            await http.get("/tickets/missing")
+        response = await http.get("/tickets/missing")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "ticket status temporarily unavailable"
+
+
+async def test_get_ticket_query_failure_without_read_model_returns_503():
+    app.state.temporal = QueryFailedClient()
+
+    async with http_client() as http:
+        response = await http.get("/tickets/missing")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "ticket status temporarily unavailable"

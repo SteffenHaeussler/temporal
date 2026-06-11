@@ -214,11 +214,16 @@ load driver for later tasks.
       `uv run python scripts/batch.py --count $(N)`; add `batch` to `.PHONY`.
 
 **Verify:**
-- [ ] With server/worker/api running: `make batch` prints a histogram summing
-      to 100, roughly ~40% resolved / ~60% awaiting_approval.
-- [ ] Web UI shows ~100 `ticket-*` workflows; spot-check one with failed
-      activity attempts that still completed.
-- [ ] `make batch N=10` works for a quick run.
+- [x] With server/worker/api running: `make batch` prints a histogram summing
+      to 100, roughly ~40% resolved / ~60% awaiting_approval. Verified with
+      `API_URL=http://localhost:8001`: `resolved: 38`,
+      `awaiting_approval: 62`, `total: 100`.
+- [x] Web UI shows ~100 `ticket-*` workflows; spot-check one with failed
+      activity attempts that still completed. Verified with Temporal CLI and
+      worker logs because another workspace already owned port 8000.
+- [x] `make batch N=10` works for a quick run. Verified with
+      `API_URL=http://localhost:8001`: `resolved: 3`,
+      `awaiting_approval: 7`, `total: 10`.
 
 ### Task 10: Search attributes + approval inbox
 
@@ -229,28 +234,31 @@ is the **visibility store**: workflows upsert *search attributes*, clients
 filter with `list_workflows`.
 
 **Steps:**
-- [ ] Register a custom search attribute on the dev server (one-time, add a
+- [x] Register a custom search attribute on the dev server (one-time, add a
       Makefile target):
       `temporal operator search-attribute create --name TicketStatus --type Keyword`
-- [ ] In the workflow, define
+- [x] In the workflow, define
       `STATUS_ATTR = SearchAttributeKey.for_keyword("TicketStatus")` and call
       `workflow.upsert_search_attributes([STATUS_ATTR.value_set(status)])`
       wherever `self._status` changes (a tiny `_set_status` helper avoids
       repeating yourself).
-- [ ] API: add `GET /tickets?status=awaiting_approval` using
+- [x] API: add `GET /tickets?status=awaiting_approval` using
       `client.list_workflows('TicketStatus = "awaiting_approval"')`; return
       ticket IDs (strip the `ticket-` prefix from workflow IDs).
-- [ ] Note for tests: the time-skipping test server needs the attribute
+- [x] Note for tests: the time-skipping test server needs the attribute
       registered too — `WorkflowEnvironment.start_time_skipping(search_attributes=...)`
       supports this; if it gets fiddly, cover the inbox endpoint manually and
       keep automated tests for the rest.
 
 **Verify:**
-- [ ] Start two refund tickets (or run `make batch N=10` from Task 9),
+- [x] Start two refund tickets (or run `make batch N=10` from Task 9),
       `curl 'localhost:8000/tickets?status=awaiting_approval'` lists the
       waiting ones; approve one, it drops out (visibility is eventually
-      consistent — allow a second).
-- [ ] In the Web UI, filter workflows by `TicketStatus`.
+      consistent — allow a second). Verified on `localhost:8001`: inbox count
+      dropped from 69 to 68 after approving one ticket.
+- [x] In the Web UI, filter workflows by `TicketStatus`. Verified equivalent
+      visibility query with Temporal CLI:
+      `temporal workflow list --query 'TicketStatus = "awaiting_approval"'`.
 
 ### Task 11 (stretch): Read model that survives retention
 
@@ -275,7 +283,9 @@ outside Temporal.
       for demos/dev.
 
 **Verify:**
-- [ ] Resolve a ticket, stop the worker, `make status` still answers from the DB.
+- [x] Resolve a ticket, stop the worker, `make status` still answers from the DB.
+      Verified with ticket `83aaf8b902234b949d0e90fa15193771` after stopping
+      the isolated worker.
 
 ---
 
@@ -288,18 +298,20 @@ deploy. Any change to workflow code breaks replay for them. You should see
 this error once in a sandbox before it finds you in production.
 
 **Steps:**
-- [ ] Start a refund ticket so it parks at AWAITING_APPROVAL. Stop the worker.
-- [ ] Edit `TicketWorkflow.run` to add a new activity call *before* the wait
+- [x] Start a refund ticket so it parks at AWAITING_APPROVAL. Stop the worker.
+- [x] Edit `TicketWorkflow.run` to add a new activity call *before* the wait
       (e.g. a second `send_reply`). Restart the worker, then `make approve`.
-- [ ] Observe the nondeterminism failure in worker logs / Web UI.
-- [ ] Fix it with `if workflow.patched("pre-wait-notify"):` gating the new
+- [x] Observe the nondeterminism failure in worker logs / Web UI.
+- [x] Fix it with `if workflow.patched("pre-wait-notify"):` gating the new
       call, restart, approve again — the old workflow completes on the old
       path while new tickets take the new one.
-- [ ] Read up on the lifecycle: `patched` → `deprecate_patch` → remove.
-- [ ] Revert the experiment.
+- [x] Read up on the lifecycle: `patched` → `deprecate_patch` → remove.
+- [x] Revert the experiment.
 
 **Verify:**
-- [ ] You saw the nondeterminism error and resolved it with `patched()`.
+- [x] You saw the nondeterminism error and resolved it with `patched()`.
+      Observed `[TMPRL1100] Nondeterminism error`; retrying the approval after
+      adding the patch guard returned `{"status":"resolved"}`.
 
 ### Task 13: Make the activities real-LLM-ready (sketch)
 
@@ -308,20 +320,20 @@ mock, not a real LLM backend (slow calls, rate limits, permanent vs transient
 errors).
 
 **Steps:**
-- [ ] Split activity options: agent activities get a longer
+- [x] Split activity options: agent activities get a longer
       `start_to_close_timeout` (e.g. 2–5 min) plus a `heartbeat_timeout`, and
       call `activity.heartbeat()` inside long agent calls.
-- [ ] Distinguish errors: keep retrying `AgentOverloadedError`, but raise
+- [x] Distinguish errors: keep retrying `AgentOverloadedError`, but raise
       `ApplicationError(..., non_retryable=True)` (or list types in
       `RetryPolicy.non_retryable_error_types`) for permanent failures like
       invalid input.
-- [ ] Sketch (in a `docs/` note, no need to build): a separate task queue for
+- [x] Sketch (in a `docs/` note, no need to build): a separate task queue for
       agent activities with its own worker and
       `max_concurrent_activities` tuned to the LLM rate limit, so workflow
       progress and LLM throughput scale independently.
 
 **Verify:**
-- [ ] `make test`; a `FlakyAgent`-style test showing a non-retryable error
+- [x] `make test`; a `FlakyAgent`-style test showing a non-retryable error
       goes straight to the escalation path without 5 attempts.
 
 ---
