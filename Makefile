@@ -1,6 +1,7 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api doctor ticket status approve reject batch
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch
 
 N ?= 100
+TEMPORAL_NAMESPACE ?= default
 
 install:
 	uv sync
@@ -38,6 +39,9 @@ server-docker:
 
 jaeger:
 	docker compose up jaeger
+
+search-attributes:
+	temporal operator search-attribute create --namespace $(TEMPORAL_NAMESPACE) --name TicketStatus --type Keyword
 
 worker:
 	uv run python -m ticketflow.worker

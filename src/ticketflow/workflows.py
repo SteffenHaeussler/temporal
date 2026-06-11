@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import cast
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
+from temporalio.common import RetryPolicy, SearchAttributeKey
 from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
@@ -38,6 +38,7 @@ ESCALATION_REPLY = (
     "We need a bit more time with your request and have escalated your "
     "ticket to a human agent."
 )
+TICKET_STATUS_ATTR = SearchAttributeKey.for_keyword("TicketStatus")
 
 
 @workflow.defn
@@ -52,8 +53,9 @@ class TicketWorkflow:
     @workflow.run
     async def run(self, ticket: Ticket) -> TicketResult:
         self._ticket = ticket
+        self._set_status(TicketStatus.RECEIVED)
 
-        self._status = TicketStatus.CLASSIFYING
+        self._set_status(TicketStatus.CLASSIFYING)
         try:
             self._classification = await workflow.execute_activity_method(
                 TicketActivities.classify_ticket,
@@ -68,7 +70,7 @@ class TicketWorkflow:
                 status=TicketStatus.ESCALATED,
             )
 
-        self._status = TicketStatus.DRAFTING
+        self._set_status(TicketStatus.DRAFTING)
         try:
             self._draft = await workflow.execute_activity_method(
                 TicketActivities.draft_reply,
@@ -94,7 +96,7 @@ class TicketWorkflow:
                 status=TicketStatus.RESOLVED,
             )
 
-        self._status = TicketStatus.AWAITING_APPROVAL
+        self._set_status(TicketStatus.AWAITING_APPROVAL)
         try:
             await workflow.wait_condition(
                 lambda: self._decision is not None, timeout=APPROVAL_TIMEOUT
@@ -163,10 +165,14 @@ class TicketWorkflow:
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=RETRY_POLICY,
         )
-        self._status = status
+        self._set_status(status)
         return TicketResult(
             ticket_id=self._ticket.id,
             status=status,
             reply_text=reply_text,
             refund_executed=refund,
         )
+
+    def _set_status(self, status: TicketStatus) -> None:
+        self._status = status
+        workflow.upsert_search_attributes([TICKET_STATUS_ATTR.value_set(status.value)])

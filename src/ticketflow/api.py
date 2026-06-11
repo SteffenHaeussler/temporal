@@ -71,6 +71,10 @@ class CreateTicketResponse(BaseModel):
     ticket_id: str
 
 
+class ListTicketsResponse(BaseModel):
+    ticket_ids: list[str]
+
+
 def _readiness_config() -> dict[str, str]:
     return {
         "address": config.TEMPORAL_ADDRESS,
@@ -177,6 +181,17 @@ async def create_ticket(request: CreateTicketRequest) -> CreateTicketResponse:
         raise HTTPException(status_code=409, detail="ticket already exists") from exc
     logger.info("Ticket workflow started", extra={"ticket_id": ticket.id})
     return CreateTicketResponse(ticket_id=ticket.id)
+
+
+@app.get("/tickets")
+async def list_tickets(status: TicketStatus) -> ListTicketsResponse:
+    query = f'WorkflowType = "TicketWorkflow" and TicketStatus = "{status.value}"'
+    ticket_ids = []
+    async for workflow in app.state.temporal.list_workflows(query):
+        workflow_id = workflow.id
+        if workflow_id.startswith("ticket-"):
+            ticket_ids.append(workflow_id.removeprefix("ticket-"))
+    return ListTicketsResponse(ticket_ids=ticket_ids)
 
 
 @app.get("/tickets/{ticket_id}")

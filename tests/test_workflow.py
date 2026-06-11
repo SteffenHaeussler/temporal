@@ -4,7 +4,9 @@ import uuid
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowUpdateFailedError, WorkflowUpdateStage
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from tests.helpers import (
@@ -20,7 +22,12 @@ from tests.helpers import (
 from ticketflow.activities import TicketActivities
 from ticketflow.agent.base import AgentOverloadedError
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus
-from ticketflow.workflows import ESCALATION_REPLY, REJECTION_REPLY, TicketWorkflow
+from ticketflow.workflows import (
+    ESCALATION_REPLY,
+    REJECTION_REPLY,
+    TICKET_STATUS_ATTR,
+    TicketWorkflow,
+)
 
 
 def unique_queue() -> str:
@@ -216,6 +223,64 @@ async def test_low_confidence_reply_requires_approval(env):
     assert status == TicketStatus.RESOLVED
     assert result.status == TicketStatus.RESOLVED
     assert result.refund_executed is False
+
+
+async def test_ticket_status_search_attribute_tracks_approval_inbox():
+    agent = ScriptedAgent(billing_classification(), refund_draft(amount=42.0))
+    ticket = make_ticket()
+    queue = unique_queue()
+
+    local_env = await WorkflowEnvironment.start_local(
+        data_converter=pydantic_data_converter,
+        search_attributes=[TICKET_STATUS_ATTR],
+    )
+    try:
+        async with make_worker(local_env.client, agent, queue):
+            handle = await local_env.client.start_workflow(
+                TicketWorkflow.run,
+                ticket,
+                id=f"ticket-{ticket.id}",
+                task_queue=queue,
+            )
+            await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
+
+            awaiting_query = (
+                'WorkflowType = "TicketWorkflow" and TicketStatus = "awaiting_approval"'
+            )
+            for _ in range(100):
+                awaiting_ids = [
+                    workflow.id
+                    async for workflow in local_env.client.list_workflows(
+                        awaiting_query
+                    )
+                ]
+                if f"ticket-{ticket.id}" in awaiting_ids:
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                raise AssertionError("ticket never appeared in approval inbox")
+
+            status = await handle.execute_update(
+                TicketWorkflow.submit_approval,
+                ApprovalDecision(approved=True, approver="sam@example.com"),
+                result_type=TicketStatus,
+            )
+            assert status == TicketStatus.RESOLVED
+
+            for _ in range(100):
+                awaiting_ids = [
+                    workflow.id
+                    async for workflow in local_env.client.list_workflows(
+                        awaiting_query
+                    )
+                ]
+                if f"ticket-{ticket.id}" not in awaiting_ids:
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                raise AssertionError("ticket never left approval inbox")
+    finally:
+        await local_env.shutdown()
 
 
 async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(env):
