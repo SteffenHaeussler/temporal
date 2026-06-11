@@ -346,3 +346,18 @@ errors).
   `activities.py:31` already marks the spot).
 - Production Temporal deployment (the docker-compose `start-dev` is
   ephemeral SQLite; fine for learning).
+
+### Optional review follow-ups
+
+- Close the approval timeout race in `_finish`: set the terminal status before
+  final refund/reply activities so late approval updates are rejected instead
+  of accepted and ignored.
+- Scale `scripts/batch.py` polling by checking ticket statuses concurrently
+  with bounded concurrency.
+- Make `scripts/doctor.py` fail with a non-zero exit when workers are degraded
+  or missing, not only when Temporal/API are unavailable.
+- Improve `GET /tickets` failure UX when the `TicketStatus` search attribute is
+  missing; return actionable guidance to run `make search-attributes`.
+- Revisit OpenTelemetry provider/instrumentation lifetime if tests need
+  isolated FastAPI span exporters; current workflow tracing tests are mostly
+  insulated.
