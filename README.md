@@ -42,9 +42,20 @@ make worker   # terminal 2: workflow worker
 make api      # terminal 3: FastAPI app
 ```
 
+The local demo needs all three long-running processes:
+
+- `server`: Temporal dev server. It stores workflow state, schedules tasks, and
+  hosts the Web UI.
+- `worker`: Python Temporal worker. It polls the `ticketflow` task queue and
+  runs workflow and activity code.
+- `api`: FastAPI HTTP app. It accepts ticket requests and starts, queries, or
+  updates Temporal workflows.
+
 Then drive a ticket through:
 
 ```bash
+make doctor
+
 make ticket
 # => {"ticket_id": "<ID>"}
 

@@ -1,5 +1,7 @@
 import asyncio
 import uuid
+from datetime import timedelta
+from types import SimpleNamespace
 
 from httpx import ASGITransport, AsyncClient
 
@@ -31,6 +33,41 @@ class RecordingTemporalClient:
         assert task_queue == config.TASK_QUEUE
 
 
+class FakeWorkflowService:
+    def __init__(self, workflow_pollers: int, activity_pollers: int) -> None:
+        self.workflow_pollers = workflow_pollers
+        self.activity_pollers = activity_pollers
+        self.requests = []
+
+    async def describe_task_queue(self, request, *, timeout: timedelta):
+        self.requests.append(request)
+        if request.task_queue_type == 1:
+            poller_count = self.workflow_pollers
+        else:
+            poller_count = self.activity_pollers
+        return SimpleNamespace(pollers=[object()] * poller_count)
+
+
+class FakeServiceClient:
+    def __init__(
+        self,
+        *,
+        temporal_healthy: bool = True,
+        workflow_pollers: int = 1,
+        activity_pollers: int = 1,
+    ) -> None:
+        self.temporal_healthy = temporal_healthy
+        self.workflow_service = FakeWorkflowService(workflow_pollers, activity_pollers)
+
+    async def check_health(self, *, timeout: timedelta) -> bool:
+        return self.temporal_healthy
+
+
+class FakeTemporalClient:
+    def __init__(self, service_client: FakeServiceClient) -> None:
+        self.service_client = service_client
+
+
 async def test_create_ticket_uses_full_uuid_hex_id():
     temporal = RecordingTemporalClient()
     app.state.temporal = temporal
@@ -46,6 +83,71 @@ async def test_create_ticket_uses_full_uuid_hex_id():
     assert len(response.ticket_id) == 32
     int(response.ticket_id, 16)
     assert temporal.workflow_id == f"ticket-{response.ticket_id}"
+
+
+async def test_health_returns_alive_status():
+    async with http_client() as http:
+        response = await http.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy", "service": "ticketflow-api"}
+
+
+async def test_ready_returns_healthy_when_temporal_and_worker_pollers_are_available():
+    service_client = FakeServiceClient(workflow_pollers=2, activity_pollers=1)
+    app.state.temporal = FakeTemporalClient(service_client)
+
+    async with http_client() as http:
+        response = await http.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["temporal"]["status"] == "healthy"
+    assert body["worker"]["status"] == "healthy"
+    assert body["worker"]["workflow_pollers"] == 2
+    assert body["worker"]["activity_pollers"] == 1
+    assert body["config"]["address"] == config.TEMPORAL_ADDRESS
+    assert body["config"]["namespace"] == config.TEMPORAL_NAMESPACE
+    assert body["config"]["task_queue"] == config.TASK_QUEUE
+    task_queue_names = [
+        request.task_queue.name for request in service_client.workflow_service.requests
+    ]
+    assert task_queue_names == [config.TASK_QUEUE, config.TASK_QUEUE]
+
+
+async def test_ready_reports_degraded_when_worker_pollers_are_missing():
+    app.state.temporal = FakeTemporalClient(
+        FakeServiceClient(workflow_pollers=0, activity_pollers=0)
+    )
+
+    async with http_client() as http:
+        response = await http.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["temporal"]["status"] == "healthy"
+    assert body["worker"] == {
+        "status": "degraded",
+        "task_queue": config.TASK_QUEUE,
+        "workflow_pollers": 0,
+        "activity_pollers": 0,
+        "message": "No worker pollers found. Run `make worker`.",
+    }
+
+
+async def test_ready_returns_503_when_temporal_is_unavailable():
+    app.state.temporal = FakeTemporalClient(FakeServiceClient(temporal_healthy=False))
+
+    async with http_client() as http:
+        response = await http.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "unavailable"
+    assert body["temporal"]["status"] == "unavailable"
+    assert body["worker"]["status"] == "unknown"
 
 
 async def test_ticket_lifecycle_via_api(env):
