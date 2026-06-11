@@ -69,7 +69,15 @@ async def check_stack(client: httpx.AsyncClient) -> CheckResult:
     if worker_status == "degraded":
         lines.append("worker: no pollers found; run `make worker`")
 
-    exit_code = 1 if ready.status_code >= 500 or temporal_status != "healthy" else 0
+    exit_code = (
+        1
+        if (
+            ready.status_code >= 500
+            or temporal_status != "healthy"
+            or worker_status != "healthy"
+        )
+        else 0
+    )
     return CheckResult(exit_code=exit_code, lines=lines)
 
 
