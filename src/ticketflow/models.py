@@ -58,6 +58,7 @@ class DraftReply(BaseModel):
 
 class ApprovalDecision(BaseModel):
     approved: bool
+    approver: str
     note: str | None = None
 
 

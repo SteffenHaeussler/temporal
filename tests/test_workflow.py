@@ -151,7 +151,11 @@ async def test_approved_refund_executes_and_resolves(env):
 
         status = await handle.execute_update(
             TicketWorkflow.submit_approval,
-            ApprovalDecision(approved=True, note="ok, refund them"),
+            ApprovalDecision(
+                approved=True,
+                approver="sam@example.com",
+                note="ok, refund them",
+            ),
             result_type=TicketStatus,
         )
         result = await handle.result()
@@ -175,7 +179,11 @@ async def test_rejected_refund_sends_fallback_reply(env):
         await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
         status = await handle.execute_update(
             TicketWorkflow.submit_approval,
-            ApprovalDecision(approved=False, note="amount looks wrong"),
+            ApprovalDecision(
+                approved=False,
+                approver="sam@example.com",
+                note="amount looks wrong",
+            ),
             result_type=TicketStatus,
         )
         result = await handle.result()
@@ -200,7 +208,7 @@ async def test_low_confidence_reply_requires_approval(env):
         await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
         status = await handle.execute_update(
             TicketWorkflow.submit_approval,
-            ApprovalDecision(approved=True),
+            ApprovalDecision(approved=True, approver="sam@example.com"),
             result_type=TicketStatus,
         )
         result = await handle.result()
@@ -226,7 +234,11 @@ async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(en
 
         first = await handle.start_update(
             TicketWorkflow.submit_approval,
-            ApprovalDecision(approved=True, note="first approval"),
+            ApprovalDecision(
+                approved=True,
+                approver="sam@example.com",
+                note="first approval",
+            ),
             wait_for_stage=WorkflowUpdateStage.ACCEPTED,
             result_type=TicketStatus,
         )
@@ -235,7 +247,11 @@ async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(en
         with pytest.raises(WorkflowUpdateFailedError):
             await handle.execute_update(
                 TicketWorkflow.submit_approval,
-                ApprovalDecision(approved=False, note="duplicate approval"),
+                ApprovalDecision(
+                    approved=False,
+                    approver="lee@example.com",
+                    note="duplicate approval",
+                ),
                 result_type=TicketStatus,
             )
 

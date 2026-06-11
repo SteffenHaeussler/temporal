@@ -179,11 +179,12 @@ the single biggest Temporal learning item in this plan.
 The decision is already durably stored in workflow history — make it complete.
 
 **Steps:**
-- [ ] Add `approver: str` to `ApprovalDecision` (`models.py:53`).
-- [ ] Thread it through the Makefile curl payloads and tests.
+- [x] Add `approver: str` to `ApprovalDecision` (`models.py:53`).
+- [x] Thread it through the Makefile curl payloads and tests.
 
 **Verify:**
-- [ ] `make test`; `make status ID=<id>` on a decided ticket shows the approver.
+- [x] `make test`; `make status ID=<id>` on a decided ticket shows the approver.
+      Verified with API lifecycle test coverage and `make check`.
 
 ---
 

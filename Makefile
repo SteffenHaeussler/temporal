@@ -56,9 +56,9 @@ status:
 approve:
 	curl -s -X POST localhost:8000/tickets/$(ID)/approval \
 	  -H 'Content-Type: application/json' \
-	  -d '{"approved": true, "note": "approved via make"}'
+	  -d '{"approved": true, "approver": "make", "note": "approved via make"}'
 
 reject:
 	curl -s -X POST localhost:8000/tickets/$(ID)/approval \
 	  -H 'Content-Type: application/json' \
-	  -d '{"approved": false, "note": "rejected via make"}'
+	  -d '{"approved": false, "approver": "make", "note": "rejected via make"}'

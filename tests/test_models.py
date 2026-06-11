@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from ticketflow.models import (
     ActionType,
+    ApprovalDecision,
     Classification,
     DraftReply,
     ProposedAction,
@@ -50,3 +51,11 @@ def test_refund_action_requires_positive_refund_amount():
 
     action = ProposedAction(type=ActionType.REFUND, refund_amount=1.0)
     assert action.refund_amount == 1.0
+
+
+def test_approval_decision_requires_approver():
+    with pytest.raises(ValidationError):
+        ApprovalDecision(approved=True)
+
+    decision = ApprovalDecision(approved=True, approver="sam@example.com")
+    assert decision.approver == "sam@example.com"
