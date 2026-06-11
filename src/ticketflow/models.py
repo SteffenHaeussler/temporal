@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class TicketCategory(StrEnum):
@@ -36,18 +36,24 @@ class Ticket(BaseModel):
 
 class Classification(BaseModel):
     category: TicketCategory
-    confidence: float
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ProposedAction(BaseModel):
     type: ActionType
-    refund_amount: float | None = None
+    refund_amount: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def require_refund_amount_for_refunds(self) -> "ProposedAction":
+        if self.type == ActionType.REFUND and self.refund_amount is None:
+            raise ValueError("refund_amount is required for refund actions")
+        return self
 
 
 class DraftReply(BaseModel):
     reply_text: str
     action: ProposedAction
-    confidence: float
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ApprovalDecision(BaseModel):
