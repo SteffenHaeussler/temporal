@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 TEMPORAL_NAMESPACE ?= default
@@ -75,3 +75,6 @@ reject:
 
 batch:
 	uv run python scripts/batch.py --count $(N)
+
+reset:
+	uv run python scripts/reset.py

@@ -3,7 +3,9 @@ import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
+import pytest
 from httpx import ASGITransport, AsyncClient
+from temporalio.service import RPCError, RPCStatusCode
 
 from tests.helpers import (
     ScriptedAgent,
@@ -13,9 +15,9 @@ from tests.helpers import (
     refund_draft,
     reply_only_draft,
 )
-from ticketflow import config
+from ticketflow import config, readmodel
 from ticketflow.api import CreateTicketRequest, app, create_ticket
-from ticketflow.models import TicketStatus
+from ticketflow.models import TicketResult, TicketStatus
 from ticketflow.workflows import TicketWorkflow
 
 
@@ -308,3 +310,71 @@ async def test_create_existing_ticket_returns_409(env, monkeypatch):
             },
         )
     assert response.status_code == 409
+
+
+class QueryUnreachableClient:
+    """Simulates a worker that never answers the status query."""
+
+    def __init__(self, status: RPCStatusCode) -> None:
+        self._status = status
+
+    def get_workflow_handle_for(self, _run, _workflow_id):
+        return SimpleNamespace(query=self._query)
+
+    async def _query(self, *_args, **_kwargs):
+        raise RPCError("query failed", self._status, b"")
+
+
+def stored_result(ticket_id: str) -> TicketResult:
+    return TicketResult(
+        ticket_id=ticket_id,
+        status=TicketStatus.RESOLVED,
+        reply_text="Archived reply.",
+        refund_executed=True,
+    )
+
+
+async def test_get_ticket_falls_back_to_read_model_after_retention(env):
+    app.state.temporal = env.client
+    readmodel.save_result(stored_result("gone"))
+
+    async with http_client() as http:
+        response = await http.get("/tickets/gone")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == TicketStatus.RESOLVED
+    assert body["result"]["reply_text"] == "Archived reply."
+    assert body["result"]["refund_executed"] is True
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        # Observed against the dev server with the worker stopped:
+        # FAILED_PRECONDITION ("no poller seen for task queue recently"),
+        # CANCELLED ("Timeout expired" from the client-side rpc_timeout),
+        # plus the generic timeout/outage codes.
+        RPCStatusCode.DEADLINE_EXCEEDED,
+        RPCStatusCode.UNAVAILABLE,
+        RPCStatusCode.FAILED_PRECONDITION,
+        RPCStatusCode.CANCELLED,
+    ],
+)
+async def test_get_ticket_falls_back_to_read_model_when_worker_is_down(status):
+    app.state.temporal = QueryUnreachableClient(status)
+    readmodel.save_result(stored_result("slow"))
+
+    async with http_client() as http:
+        response = await http.get("/tickets/slow")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == TicketStatus.RESOLVED
+
+
+async def test_get_ticket_query_timeout_without_read_model_is_an_error():
+    app.state.temporal = QueryUnreachableClient(RPCStatusCode.DEADLINE_EXCEEDED)
+
+    async with http_client() as http:
+        with pytest.raises(RPCError):
+            await http.get("/tickets/missing")

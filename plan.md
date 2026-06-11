@@ -260,11 +260,19 @@ forces a worker to replay history. Production systems persist ticket state
 outside Temporal.
 
 **Steps:**
-- [ ] Add a `record_result` activity that writes the final `TicketResult` to a
+- [x] Add a `record_result` activity that writes the final `TicketResult` to a
       tiny SQLite table (stdlib `sqlite3` is fine for learning).
-- [ ] Call it from `_finish` after `send_reply`.
-- [ ] `GET /tickets/{id}`: try the workflow query first; on NOT_FOUND, fall
-      back to the read model.
+- [x] Call it from `_finish` after `send_reply`.
+- [x] `GET /tickets/{id}`: try the workflow query first; on NOT_FOUND, fall
+      back to the read model. Implementation note: the query gets a 2s
+      `rpc_timeout`, and the fallback also fires on DEADLINE_EXCEEDED /
+      UNAVAILABLE — querying a closed-but-retained workflow with no worker
+      hangs instead of returning NOT_FOUND, so plain NOT_FOUND handling would
+      never satisfy the worker-stopped verify below.
+- [x] Bonus: `make reset` (`scripts/reset.py`) terminates running ticket
+      workflows, deletes all of them, and clears the read model
+      (`ticketflow.db`, configurable via `TICKETFLOW_DB_PATH`) — clean slate
+      for demos/dev.
 
 **Verify:**
 - [ ] Resolve a ticket, stop the worker, `make status` still answers from the DB.

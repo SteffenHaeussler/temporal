@@ -75,3 +75,4 @@ class TicketStatusInfo(BaseModel):
     classification: Classification | None = None
     draft: DraftReply | None = None
     decision: ApprovalDecision | None = None
+    result: TicketResult | None = None

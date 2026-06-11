@@ -36,6 +36,7 @@ async def main() -> None:
             acts.draft_reply,
             acts.send_reply,
             acts.execute_refund,
+            acts.record_result,
         ],
         workflow_runner=sandboxed_runner_with_otel(),
     )

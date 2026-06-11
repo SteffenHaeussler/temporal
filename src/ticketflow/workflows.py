@@ -166,12 +166,19 @@ class TicketWorkflow:
             retry_policy=RETRY_POLICY,
         )
         self._set_status(status)
-        return TicketResult(
+        result = TicketResult(
             ticket_id=self._ticket.id,
             status=status,
             reply_text=reply_text,
             refund_executed=refund,
         )
+        await workflow.execute_activity_method(
+            TicketActivities.record_result,
+            result,
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=RETRY_POLICY,
+        )
+        return result
 
     def _set_status(self, status: TicketStatus) -> None:
         self._status = status
