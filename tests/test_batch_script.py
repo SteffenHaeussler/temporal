@@ -104,6 +104,60 @@ async def test_poll_ticket_statuses_stops_when_all_are_settled():
     assert calls == Counter({"one": 2, "two": 1})
 
 
+async def test_poll_ticket_statuses_retries_transient_status_errors():
+    calls = Counter()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        ticket_id = request.url.path.rsplit("/", 1)[-1]
+        calls[ticket_id] += 1
+        if calls[ticket_id] == 1:
+            return httpx.Response(500, json={"detail": "query timed out"})
+        return httpx.Response(200, json={"ticket_id": ticket_id, "status": "resolved"})
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        statuses = await batch.poll_ticket_statuses(
+            client,
+            ["one"],
+            timeout=1.0,
+            poll_interval=0.0,
+            sleep=no_sleep,
+        )
+
+    assert statuses == {"one": "resolved"}
+    assert calls == Counter({"one": 2})
+
+
+async def test_poll_ticket_statuses_retries_status_timeouts():
+    calls = Counter()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        ticket_id = request.url.path.rsplit("/", 1)[-1]
+        calls[ticket_id] += 1
+        if calls[ticket_id] == 1:
+            raise httpx.ReadTimeout("query timed out", request=request)
+        return httpx.Response(200, json={"ticket_id": ticket_id, "status": "resolved"})
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        statuses = await batch.poll_ticket_statuses(
+            client,
+            ["one"],
+            timeout=1.0,
+            poll_interval=0.0,
+            sleep=no_sleep,
+        )
+
+    assert statuses == {"one": "resolved"}
+    assert calls == Counter({"one": 2})
+
+
 def test_status_histogram_counts_statuses_deterministically():
     histogram = batch.status_histogram(
         {

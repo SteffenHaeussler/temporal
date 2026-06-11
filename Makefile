@@ -1,6 +1,7 @@
 .PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch reset
 
 N ?= 100
+API_URL ?= http://localhost:8000
 TEMPORAL_NAMESPACE ?= default
 
 install:
@@ -55,26 +56,26 @@ doctor:
 ## --- drive a ticket through (usage: make ticket / make status ID=abc123) ---
 
 ticket:
-	@uv run python scripts/doctor.py --quiet
-	curl -s -X POST localhost:8000/tickets \
+	@uv run python scripts/doctor.py --quiet --base-url $(API_URL)
+	curl -s -X POST $(API_URL)/tickets \
 	  -H 'Content-Type: application/json' \
 	  -d '{"customer_email": "jo@example.com", "subject": "refund please", "body": "I was double charged."}'
 
 status:
-	curl -s localhost:8000/tickets/$(ID)
+	curl -s $(API_URL)/tickets/$(ID)
 
 approve:
-	curl -s -X POST localhost:8000/tickets/$(ID)/approval \
+	curl -s -X POST $(API_URL)/tickets/$(ID)/approval \
 	  -H 'Content-Type: application/json' \
 	  -d '{"approved": true, "approver": "make", "note": "approved via make"}'
 
 reject:
-	curl -s -X POST localhost:8000/tickets/$(ID)/approval \
+	curl -s -X POST $(API_URL)/tickets/$(ID)/approval \
 	  -H 'Content-Type: application/json' \
 	  -d '{"approved": false, "approver": "make", "note": "rejected via make"}'
 
 batch:
-	uv run python scripts/batch.py --count $(N)
+	uv run python scripts/batch.py --count $(N) --base-url $(API_URL)
 
 reset:
 	uv run python scripts/reset.py

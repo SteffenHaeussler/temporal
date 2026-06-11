@@ -12,7 +12,11 @@ from pydantic import BaseModel
 from temporalio.api.enums.v1 import task_queue_pb2
 from temporalio.api.taskqueue.v1 import message_pb2 as taskqueue_pb2
 from temporalio.api.workflowservice.v1 import request_response_pb2
-from temporalio.client import Client, WorkflowUpdateFailedError
+from temporalio.client import (
+    Client,
+    WorkflowQueryFailedError,
+    WorkflowUpdateFailedError,
+)
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
@@ -221,7 +225,18 @@ async def get_ticket(ticket_id: str) -> TicketStatusInfo:
         if result is None:
             if exc.status == RPCStatusCode.NOT_FOUND:
                 raise HTTPException(status_code=404, detail="ticket not found") from exc
-            raise
+            raise HTTPException(
+                status_code=503, detail="ticket status temporarily unavailable"
+            ) from exc
+        return TicketStatusInfo(
+            ticket_id=ticket_id, status=result.status, result=result
+        )
+    except WorkflowQueryFailedError as exc:
+        result = await asyncio.to_thread(readmodel.load_result, ticket_id)
+        if result is None:
+            raise HTTPException(
+                status_code=503, detail="ticket status temporarily unavailable"
+            ) from exc
         return TicketStatusInfo(
             ticket_id=ticket_id, status=result.status, result=result
         )

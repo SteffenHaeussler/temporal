@@ -21,7 +21,7 @@ from tests.helpers import (
 )
 from ticketflow import readmodel
 from ticketflow.activities import TicketActivities
-from ticketflow.agent.base import AgentOverloadedError
+from ticketflow.agent.base import AgentOverloadedError, AgentPermanentError
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus
 from ticketflow.workflows import (
     ESCALATION_REPLY,
@@ -48,6 +48,18 @@ class DraftFailingAgent:
     async def draft_reply(self, ticket, classification):
         self.draft_calls += 1
         raise AgentOverloadedError("draft unavailable")
+
+
+class PermanentlyFailingAgent:
+    def __init__(self):
+        self.classify_calls = 0
+
+    async def classify(self, ticket):
+        self.classify_calls += 1
+        raise AgentPermanentError("invalid ticket input")
+
+    async def draft_reply(self, ticket, classification):
+        raise AssertionError("draft_reply should not run after classification fails")
 
 
 class BlockingTicketActivities(TicketActivities):
@@ -123,6 +135,22 @@ async def test_workflow_escalates_when_classification_retries_are_exhausted(env)
     assert result.reply_text == ESCALATION_REPLY
     assert result.refund_executed is False
     assert agent.classify_calls == 5
+
+
+async def test_workflow_escalates_without_retrying_permanent_agent_errors(env):
+    agent = PermanentlyFailingAgent()
+    ticket = make_ticket()
+    queue = unique_queue()
+    async with make_worker(env.client, agent, queue):
+        result = await env.client.execute_workflow(
+            TicketWorkflow.run,
+            ticket,
+            id=f"ticket-{ticket.id}",
+            task_queue=queue,
+        )
+    assert result.status == TicketStatus.ESCALATED
+    assert result.reply_text == ESCALATION_REPLY
+    assert agent.classify_calls == 1
 
 
 async def test_workflow_escalates_when_draft_retries_are_exhausted(env):
