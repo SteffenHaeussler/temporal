@@ -1,5 +1,6 @@
 """HTTP layer: start tickets, inspect status, approve or reject."""
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -16,7 +17,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
-from ticketflow import config
+from ticketflow import config, readmodel
 from ticketflow.logging import reset_ticket_context, set_ticket_context, setup_logging
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus, TicketStatusInfo
 from ticketflow.tracing import setup_tracing
@@ -27,6 +28,7 @@ tracing_interceptor = setup_tracing(service_name="ticketflow-api")
 
 logger = logging.getLogger(__name__)
 READINESS_TIMEOUT = timedelta(seconds=2)
+QUERY_TIMEOUT = timedelta(seconds=2)
 
 
 @asynccontextmanager
@@ -197,11 +199,32 @@ async def list_tickets(status: TicketStatus) -> ListTicketsResponse:
 @app.get("/tickets/{ticket_id}")
 async def get_ticket(ticket_id: str) -> TicketStatusInfo:
     try:
-        return await _handle(ticket_id).query(TicketWorkflow.status)
+        return await _handle(ticket_id).query(
+            TicketWorkflow.status, rpc_timeout=QUERY_TIMEOUT
+        )
     except RPCError as exc:
-        if exc.status == RPCStatusCode.NOT_FOUND:
-            raise HTTPException(status_code=404, detail="ticket not found") from exc
-        raise
+        # NOT_FOUND: history deleted after retention. The rest mean the query
+        # could not be answered: it needs a live worker to replay history, and
+        # without one the dev server returns FAILED_PRECONDITION ("no poller
+        # seen for task queue recently") or the client-side rpc_timeout fires
+        # as CANCELLED ("Timeout expired").
+        fallback_statuses = (
+            RPCStatusCode.NOT_FOUND,
+            RPCStatusCode.DEADLINE_EXCEEDED,
+            RPCStatusCode.UNAVAILABLE,
+            RPCStatusCode.FAILED_PRECONDITION,
+            RPCStatusCode.CANCELLED,
+        )
+        if exc.status not in fallback_statuses:
+            raise
+        result = await asyncio.to_thread(readmodel.load_result, ticket_id)
+        if result is None:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                raise HTTPException(status_code=404, detail="ticket not found") from exc
+            raise
+        return TicketStatusInfo(
+            ticket_id=ticket_id, status=result.status, result=result
+        )
 
 
 @app.post("/tickets/{ticket_id}/approval")

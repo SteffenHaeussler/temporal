@@ -19,6 +19,7 @@ from tests.helpers import (
     reply_only_draft,
     wait_for_status,
 )
+from ticketflow import readmodel
 from ticketflow.activities import TicketActivities
 from ticketflow.agent.base import AgentOverloadedError
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus
@@ -69,6 +70,7 @@ def make_blocking_reply_worker(client, agent, task_queue, activities):
             activities.draft_reply,
             activities.send_reply,
             activities.execute_refund,
+            activities.record_result,
         ],
     )
 
@@ -357,3 +359,20 @@ async def test_finish_without_ticket_fails_workflow_non_retryably():
 
     assert str(exc_info.value) == "workflow has no ticket"
     assert exc_info.value.non_retryable is True
+
+
+async def test_finished_ticket_result_is_persisted_to_read_model(env, tmp_path):
+    db = str(tmp_path / "read.db")
+    agent = ScriptedAgent(billing_classification(), reply_only_draft(confidence=0.9))
+    ticket = make_ticket()
+    queue = unique_queue()
+    async with make_worker(env.client, agent, queue, db_path=db):
+        result = await env.client.execute_workflow(
+            TicketWorkflow.run,
+            ticket,
+            id=f"ticket-{ticket.id}",
+            task_queue=queue,
+        )
+
+    assert result.status == TicketStatus.RESOLVED
+    assert readmodel.load_result(ticket.id, db) == result

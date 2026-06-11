@@ -97,8 +97,9 @@ def make_worker(
     agent: Agent,
     task_queue: str,
     workflow_runner: WorkflowRunner | None = None,
+    db_path: str | None = None,
 ) -> Worker:
-    acts = TicketActivities(agent)
+    acts = TicketActivities(agent, db_path=db_path)
     extra = {"workflow_runner": workflow_runner} if workflow_runner else {}
     return Worker(
         client,
@@ -109,6 +110,7 @@ def make_worker(
             acts.draft_reply,
             acts.send_reply,
             acts.execute_refund,
+            acts.record_result,
         ],
         **extra,
     )
