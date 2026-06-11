@@ -68,6 +68,36 @@ class FakeTemporalClient:
         self.service_client = service_client
 
 
+class FakeWorkflowSummary:
+    def __init__(self, workflow_id: str) -> None:
+        self.id = workflow_id
+
+
+class FakeWorkflowIterator:
+    def __init__(self, workflow_ids: list[str]) -> None:
+        self._workflows = [
+            FakeWorkflowSummary(workflow_id) for workflow_id in workflow_ids
+        ]
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._workflows:
+            raise StopAsyncIteration
+        return self._workflows.pop(0)
+
+
+class ListingTemporalClient:
+    def __init__(self, workflow_ids: list[str]) -> None:
+        self.workflow_ids = workflow_ids
+        self.queries: list[str] = []
+
+    def list_workflows(self, query: str):
+        self.queries.append(query)
+        return FakeWorkflowIterator(self.workflow_ids)
+
+
 async def test_create_ticket_uses_full_uuid_hex_id():
     temporal = RecordingTemporalClient()
     app.state.temporal = temporal
@@ -83,6 +113,20 @@ async def test_create_ticket_uses_full_uuid_hex_id():
     assert len(response.ticket_id) == 32
     int(response.ticket_id, 16)
     assert temporal.workflow_id == f"ticket-{response.ticket_id}"
+
+
+async def test_list_tickets_filters_by_status_and_returns_ticket_ids():
+    temporal = ListingTemporalClient(["ticket-abc", "ticket-def"])
+    app.state.temporal = temporal
+
+    async with http_client() as http:
+        response = await http.get("/tickets?status=awaiting_approval")
+
+    assert response.status_code == 200
+    assert response.json() == {"ticket_ids": ["abc", "def"]}
+    assert temporal.queries == [
+        'WorkflowType = "TicketWorkflow" and TicketStatus = "awaiting_approval"'
+    ]
 
 
 async def test_health_returns_alive_status():
