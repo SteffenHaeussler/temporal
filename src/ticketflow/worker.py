@@ -10,11 +10,14 @@ from temporalio.worker import Worker
 from ticketflow import config
 from ticketflow.activities import TicketActivities
 from ticketflow.agent.mock import MockAgent
+from ticketflow.logging import setup_logging
 from ticketflow.workflows import TicketWorkflow
+
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
     client = await Client.connect(
         config.TEMPORAL_ADDRESS,
         namespace=config.TEMPORAL_NAMESPACE,
@@ -32,7 +35,10 @@ async def main() -> None:
             acts.execute_refund,
         ],
     )
-    logging.info("Worker running on task queue %r", config.TASK_QUEUE)
+    logger.info(
+        "Worker running",
+        extra={"task_queue": config.TASK_QUEUE},
+    )
     await worker.run()
 
 

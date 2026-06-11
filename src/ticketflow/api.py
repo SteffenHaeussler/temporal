@@ -1,17 +1,23 @@
 """HTTP layer: start tickets, inspect status, approve or reject."""
 
+import logging
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.service import RPCError
 
 from ticketflow import config
+from ticketflow.logging import reset_ticket_context, set_ticket_context, setup_logging
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatusInfo
 from ticketflow.workflows import TicketWorkflow
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -25,6 +31,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Ticketflow", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def ticket_context_middleware(request: Request, call_next):
+    parts = request.url.path.strip("/").split("/")
+    token = None
+    if len(parts) >= 2 and parts[0] == "tickets" and parts[1]:
+        token = set_ticket_context(parts[1])
+    try:
+        return await call_next(request)
+    finally:
+        if token is not None:
+            reset_ticket_context(token)
 
 
 class CreateTicketRequest(BaseModel):
@@ -52,6 +71,7 @@ async def create_ticket(request: CreateTicketRequest) -> CreateTicketResponse:
         id=f"ticket-{ticket.id}",
         task_queue=config.TASK_QUEUE,
     )
+    logger.info("Ticket workflow started", extra={"ticket_id": ticket.id})
     return CreateTicketResponse(ticket_id=ticket.id)
 
 
