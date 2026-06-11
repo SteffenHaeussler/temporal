@@ -21,7 +21,9 @@ async def test_classifies_billing_by_keyword():
 async def test_classifies_technical_by_keyword():
     agent = MockAgent(seed=1, failure_rate=0.0)
 
-    result = await agent.classify(make_ticket(body="the app shows an error and crashes"))
+    result = await agent.classify(
+        make_ticket(body="the app shows an error and crashes")
+    )
 
     assert result.category == TicketCategory.TECHNICAL
 
