@@ -26,15 +26,20 @@ _ticket_id: ContextVar[str] = ContextVar("ticket_id", default="")
 
 
 def set_ticket_context(ticket_id: str) -> Token[str]:
+    """Set the current ticket id for structured log records."""
     return _ticket_id.set(ticket_id)
 
 
 def reset_ticket_context(token: Token[str]) -> None:
+    """Restore the previous ticket id logging context."""
     _ticket_id.reset(token)
 
 
 class ContextFilter(logging.Filter):
+    """Inject request-scoped Ticketflow fields into log records."""
+
     def filter(self, record: logging.LogRecord) -> bool:
+        """Populate missing context fields before formatting."""
         if not hasattr(record, "ticket_id"):
             record.ticket_id = _ticket_id.get()
         if not hasattr(record, "task_queue"):
@@ -43,11 +48,15 @@ class ContextFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
+    """Format log records as JSON with a configurable field set."""
+
     def __init__(self, fields: list[str]):
+        """Create a formatter for the selected fields."""
         super().__init__()
         self.fields = fields
 
     def format(self, record: logging.LogRecord) -> str:
+        """Render a log record as a JSON object."""
         return json.dumps(
             {field: self._value(record, field) for field in self.fields},
             default=str,
@@ -76,7 +85,10 @@ class JsonFormatter(logging.Formatter):
 
 
 class TextFormatter(JsonFormatter):
+    """Format log records as compact pipe-delimited text."""
+
     def format(self, record: logging.LogRecord) -> str:
+        """Render a log record as text."""
         return " | ".join(str(self._value(record, field)) for field in self.fields)
 
 
@@ -86,6 +98,7 @@ def setup_logging(
     fields: list[str] | None = None,
     stream: TextIO | None = None,
 ) -> None:
+    """Configure root logging for Ticketflow processes."""
     resolved_format = (log_format or config.LOG_FORMAT).lower()
     if resolved_format not in {"json", "text"}:
         raise ValueError(f"Unsupported log format: {resolved_format}")

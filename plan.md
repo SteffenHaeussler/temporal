@@ -338,6 +338,37 @@ errors).
 
 ---
 
+## Phase 6 — Incremental quality gates
+
+### Task 14: Add type checking and targeted public docstrings
+
+**Why:** The project now has enough workflow, API, script, and read-model
+surface area that regressions are easier to catch with static checks and
+documented public contracts. Keep the gate incremental so it improves signal
+without turning into a broad strictness refactor.
+
+**Steps:**
+- [x] Add Pyright as the first static type checker.
+- [x] Add `make typecheck` and include it in `make check` between linting and
+      tests.
+- [x] Configure Pyright for Python 3.12 with `src`, `scripts`, and `tests`
+      included at standard strictness.
+- [x] Expand Ruff to enforce missing public docstrings for source and script
+      APIs, while excluding tests and package initializers.
+- [x] Add concise docstrings for public models, workflow/update/query methods,
+      activities, scripts, read-model helpers, logging/tracing setup helpers,
+      and agent interfaces.
+- [x] Fix static typing issues with precise annotations, structural protocols,
+      and narrow SDK-boundary casts where Temporal's generated types are not
+      expressive enough.
+
+**Verify:**
+- [x] `make typecheck` passes with `0 errors, 0 warnings, 0 informations`.
+- [x] `make lint` passes with the new docstring rules.
+- [x] `make check` passes end to end.
+
+---
+
 ## Deliberately out of scope (for now)
 
 - Auth on the approval endpoint (anyone can approve refunds today).

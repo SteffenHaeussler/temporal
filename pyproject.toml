@@ -22,6 +22,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
     "pre-commit>=4.6.0",
+    "pyright>=1.1.410",
 ]
 
 [build-system]
@@ -41,4 +42,13 @@ line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "D100", "D101", "D102", "D103", "D104", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+"src/**/__init__.py" = ["D104"]
+
+[tool.pyright]
+include = ["src", "scripts", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"

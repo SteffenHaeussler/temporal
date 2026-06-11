@@ -21,6 +21,7 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def save_result(result: TicketResult, db_path: str | None = None) -> None:
+    """Store or replace a terminal ticket result."""
     conn = _connect(_resolve(db_path))
     try:
         with conn:
@@ -33,6 +34,7 @@ def save_result(result: TicketResult, db_path: str | None = None) -> None:
 
 
 def load_result(ticket_id: str, db_path: str | None = None) -> TicketResult | None:
+    """Load a terminal ticket result, if it exists."""
     path = _resolve(db_path)
     if not Path(path).exists():
         return None
@@ -47,6 +49,7 @@ def load_result(ticket_id: str, db_path: str | None = None) -> TicketResult | No
 
 
 def clear(db_path: str | None = None) -> int:
+    """Remove all persisted ticket results and return the row count."""
     path = _resolve(db_path)
     if not Path(path).exists():
         return 0

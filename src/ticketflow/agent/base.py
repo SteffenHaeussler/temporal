@@ -14,8 +14,14 @@ class AgentPermanentError(Exception):
 
 
 class Agent(Protocol):
-    async def classify(self, ticket: Ticket) -> Classification: ...
+    """Backend contract for ticket classification and reply drafting."""
+
+    async def classify(self, ticket: Ticket) -> Classification:
+        """Classify a ticket into a support category."""
+        ...
 
     async def draft_reply(
         self, ticket: Ticket, classification: Classification
-    ) -> DraftReply: ...
+    ) -> DraftReply:
+        """Draft a customer reply for a classified ticket."""
+        ...

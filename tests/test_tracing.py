@@ -74,5 +74,7 @@ async def test_trace_has_span_for_each_workflow_step(env):
         "RunActivity:send_reply",
     } <= names
 
-    trace_ids = {span.context.trace_id for span in spans}
+    contexts = [span.context for span in spans]
+    assert all(context is not None for context in contexts)
+    trace_ids = {context.trace_id for context in contexts if context is not None}
     assert len(trace_ids) == 1

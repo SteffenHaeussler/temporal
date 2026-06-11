@@ -45,7 +45,10 @@ TICKET_STATUS_ATTR = SearchAttributeKey.for_keyword("TicketStatus")
 
 @workflow.defn
 class TicketWorkflow:
+    """Durable workflow that resolves one support ticket."""
+
     def __init__(self) -> None:
+        """Initialize replay-safe workflow state."""
         self._ticket: Ticket | None = None
         self._status = TicketStatus.RECEIVED
         self._classification: Classification | None = None
@@ -54,6 +57,7 @@ class TicketWorkflow:
 
     @workflow.run
     async def run(self, ticket: Ticket) -> TicketResult:
+        """Drive classification, drafting, approval, and terminal side effects."""
         self._ticket = ticket
         self._set_status(TicketStatus.RECEIVED)
 
@@ -112,7 +116,11 @@ class TicketWorkflow:
                 status=TicketStatus.ESCALATED,
             )
 
-        if not self._decision.approved:
+        decision = self._decision
+        if decision is None:
+            raise ApplicationError("approval decision missing", non_retryable=True)
+
+        if not decision.approved:
             return await self._finish(
                 reply_text=REJECTION_REPLY,
                 refund=False,
@@ -127,6 +135,7 @@ class TicketWorkflow:
 
     @workflow.update
     async def submit_approval(self, decision: ApprovalDecision) -> TicketStatus:
+        """Accept a human decision and return the resulting status."""
         self._decision = decision
         await workflow.wait_condition(
             lambda: self._status != TicketStatus.AWAITING_APPROVAL
@@ -134,7 +143,9 @@ class TicketWorkflow:
         return self._status
 
     @submit_approval.validator
-    def validate_submit_approval(self, _decision: ApprovalDecision) -> None:
+    def validate_submit_approval(self, decision: ApprovalDecision) -> None:
+        """Reject approval updates unless the workflow is awaiting one."""
+        _ = decision
         if self._status != TicketStatus.AWAITING_APPROVAL or self._decision is not None:
             raise ApplicationError(
                 "ticket is not awaiting approval", non_retryable=True
@@ -142,6 +153,7 @@ class TicketWorkflow:
 
     @workflow.query
     def status(self) -> TicketStatusInfo:
+        """Return the current in-workflow ticket state."""
         return TicketStatusInfo(
             ticket_id=self._ticket.id if self._ticket else "",
             status=self._status,

@@ -2,6 +2,7 @@
 
 import asyncio
 import uuid
+from typing import cast
 
 from temporalio.client import Client, WorkflowHandle
 from temporalio.worker import Worker, WorkflowRunner
@@ -16,19 +17,20 @@ from ticketflow.models import (
     Ticket,
     TicketCategory,
     TicketStatus,
+    TicketStatusInfo,
 )
 from ticketflow.workflows import TicketWorkflow
 
 
-def make_ticket(**overrides) -> Ticket:
-    defaults = dict(
-        id=uuid.uuid4().hex,
-        customer_email="jo@example.com",
-        subject="Help",
-        body="Something broke",
-    )
+def make_ticket(**overrides: object) -> Ticket:
+    defaults: dict[str, object] = {
+        "id": uuid.uuid4().hex,
+        "customer_email": "jo@example.com",
+        "subject": "Help",
+        "body": "Something broke",
+    }
     defaults.update(overrides)
-    return Ticket(**defaults)
+    return Ticket.model_validate(defaults)
 
 
 def billing_classification(confidence: float = 0.9) -> Classification:
@@ -100,27 +102,34 @@ def make_worker(
     db_path: str | None = None,
 ) -> Worker:
     acts = TicketActivities(agent, db_path=db_path)
-    extra = {"workflow_runner": workflow_runner} if workflow_runner else {}
+    activities = [
+        acts.classify_ticket,
+        acts.draft_reply,
+        acts.send_reply,
+        acts.execute_refund,
+        acts.record_result,
+    ]
+    if workflow_runner is not None:
+        return Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[TicketWorkflow],
+            activities=activities,
+            workflow_runner=workflow_runner,
+        )
     return Worker(
         client,
         task_queue=task_queue,
         workflows=[TicketWorkflow],
-        activities=[
-            acts.classify_ticket,
-            acts.draft_reply,
-            acts.send_reply,
-            acts.execute_refund,
-            acts.record_result,
-        ],
-        **extra,
+        activities=activities,
     )
 
 
 async def wait_for_status(
     handle: WorkflowHandle, expected: TicketStatus, attempts: int = 100
-):
+) -> TicketStatusInfo:
     for _ in range(attempts):
-        info = await handle.query(TicketWorkflow.status)
+        info = cast(TicketStatusInfo, await handle.query(TicketWorkflow.status))
         if info.status == expected:
             return info
         await asyncio.sleep(0.1)

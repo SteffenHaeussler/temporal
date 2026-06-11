@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
+    """Run the Temporal worker until interrupted."""
     setup_logging()
     interceptor = setup_tracing(service_name="ticketflow-worker")
     client = await Client.connect(

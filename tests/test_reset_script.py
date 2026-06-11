@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from temporalio.api.workflowservice.v1 import request_response_pb2
 from temporalio.client import WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -27,7 +28,9 @@ class FakeWorkflowService:
     def __init__(self):
         self.deleted_ids: list[str] = []
 
-    async def delete_workflow_execution(self, request) -> None:
+    async def delete_workflow_execution(
+        self, request: request_response_pb2.DeleteWorkflowExecutionRequest
+    ) -> None:
         self.deleted_ids.append(request.workflow_execution.workflow_id)
 
 
