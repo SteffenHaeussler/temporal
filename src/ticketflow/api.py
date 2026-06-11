@@ -25,11 +25,12 @@ from temporalio.service import RPCError, RPCStatusCode
 from ticketflow import config, readmodel
 from ticketflow.logging import reset_ticket_context, set_ticket_context, setup_logging
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus, TicketStatusInfo
-from ticketflow.tracing import setup_tracing
+from ticketflow.tracing import instrument_fastapi_app, setup_tracing_components
 from ticketflow.workflows import TicketWorkflow
 
 setup_logging()
-tracing_interceptor = setup_tracing(service_name="ticketflow-api")
+tracing = setup_tracing_components(service_name="ticketflow-api")
+tracing_interceptor = tracing.interceptor if tracing else None
 
 logger = logging.getLogger(__name__)
 READINESS_TIMEOUT = timedelta(seconds=2)
@@ -50,10 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Ticketflow", lifespan=lifespan)
 
-if tracing_interceptor:
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-
-    FastAPIInstrumentor.instrument_app(app)
+if tracing:
+    instrument_fastapi_app(app, tracing)
 
 
 @app.middleware("http")
