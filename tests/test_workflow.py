@@ -1,5 +1,8 @@
 import uuid
 
+import pytest
+from temporalio.exceptions import ApplicationError
+
 from tests.helpers import (
     FlakyAgent,
     ScriptedAgent,
@@ -186,3 +189,17 @@ async def test_unanswered_approval_escalates_after_timeout(env):
     assert result.status == TicketStatus.ESCALATED
     assert result.reply_text == ESCALATION_REPLY
     assert result.refund_executed is False
+
+
+async def test_finish_without_ticket_fails_workflow_non_retryably():
+    workflow = TicketWorkflow()
+
+    with pytest.raises(ApplicationError) as exc_info:
+        await workflow._finish(
+            reply_text="cannot finish",
+            refund=False,
+            status=TicketStatus.ESCALATED,
+        )
+
+    assert str(exc_info.value) == "workflow has no ticket"
+    assert exc_info.value.non_retryable is True

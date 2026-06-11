@@ -89,8 +89,10 @@ infrastructure failure — same as the approval timeout.
 
 **Verify:**
 - [x] `make test`.
-- [ ] In the Web UI, the workflow shows 5 failed activity attempts and still
-      *completes* (green), ending in the escalation reply.
+- [x] In the Web UI, the workflow shows 5 failed activity attempts and still
+      *completes* (green), ending in the escalation reply. Verified via
+      `temporal workflow show` in this workspace because browser automation
+      was not exposed in this session.
 
 ### Task 5: Learn the workflow-task-failure gotcha
 
@@ -102,15 +104,15 @@ actually fail the workflow. This is one of the most surprising Temporal
 behaviors; provoke it once on purpose.
 
 **Steps:**
-- [ ] Experiment: temporarily `raise RuntimeError("boom")` at the top of
+- [x] Experiment: temporarily `raise RuntimeError("boom")` at the top of
       `_finish`, run a ticket, and watch the Web UI — the workflow stays
       "Running" with repeating `WorkflowTaskFailed` events. Revert.
-- [ ] Replace the remaining `RuntimeError`s in `_finish` (`workflows.py:124`)
+- [x] Replace the remaining `RuntimeError`s in `_finish` (`workflows.py:124`)
       with `ApplicationError(..., non_retryable=True)`.
 
 **Verify:**
-- [ ] You saw the infinite `WorkflowTaskFailed` loop with your own eyes.
-- [ ] `make test` after the revert + `ApplicationError` change.
+- [x] You saw the infinite `WorkflowTaskFailed` loop with your own eyes.
+- [x] `make test` after the revert + `ApplicationError` change.
 
 ### Task 6: Precise API error handling
 

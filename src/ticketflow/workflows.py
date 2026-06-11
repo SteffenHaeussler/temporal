@@ -6,7 +6,7 @@ from typing import cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from ticketflow.activities import TicketActivities
@@ -137,7 +137,7 @@ class TicketWorkflow:
         self, *, reply_text: str, refund: bool, status: TicketStatus
     ) -> TicketResult:
         if self._ticket is None:
-            raise RuntimeError("workflow has no ticket")
+            raise ApplicationError("workflow has no ticket", non_retryable=True)
         if refund:
             draft = cast(DraftReply, self._draft)
             await workflow.execute_activity_method(
