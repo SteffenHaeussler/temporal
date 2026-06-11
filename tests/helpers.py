@@ -23,7 +23,7 @@ from ticketflow.workflows import TicketWorkflow
 
 def make_ticket(**overrides) -> Ticket:
     defaults = dict(
-        id=uuid.uuid4().hex[:8],
+        id=uuid.uuid4().hex,
         customer_email="jo@example.com",
         subject="Help",
         body="Something broke",

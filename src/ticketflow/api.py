@@ -17,7 +17,9 @@ from ticketflow.workflows import TicketWorkflow
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.temporal = await Client.connect(
-        config.TEMPORAL_ADDRESS, data_converter=pydantic_data_converter
+        config.TEMPORAL_ADDRESS,
+        namespace=config.TEMPORAL_NAMESPACE,
+        data_converter=pydantic_data_converter,
     )
     yield
 
@@ -43,7 +45,7 @@ def _handle(ticket_id: str):
 
 @app.post("/tickets", status_code=201)
 async def create_ticket(request: CreateTicketRequest) -> CreateTicketResponse:
-    ticket = Ticket(id=uuid.uuid4().hex[:8], **request.model_dump())
+    ticket = Ticket(id=uuid.uuid4().hex, **request.model_dump())
     await app.state.temporal.start_workflow(
         TicketWorkflow.run,
         ticket,

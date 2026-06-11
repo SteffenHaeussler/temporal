@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import timedelta
+from typing import cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -123,11 +124,10 @@ class TicketWorkflow:
         if self._ticket is None:
             raise RuntimeError("workflow has no ticket")
         if refund:
-            if self._draft is None or self._draft.action.refund_amount is None:
-                raise RuntimeError("refund requested without a refund amount")
+            draft = cast(DraftReply, self._draft)
             await workflow.execute_activity_method(
                 TicketActivities.execute_refund,
-                args=[self._ticket.id, self._draft.action.refund_amount],
+                args=[self._ticket.id, draft.action.refund_amount],
                 start_to_close_timeout=ACTIVITY_TIMEOUT,
                 retry_policy=RETRY_POLICY,
             )

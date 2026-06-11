@@ -9,12 +9,39 @@ from tests.helpers import (
     refund_draft,
 )
 from ticketflow import config
-from ticketflow.api import app
+from ticketflow.api import CreateTicketRequest, app, create_ticket
 from ticketflow.models import TicketStatus
 
 
 def http_client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+class RecordingTemporalClient:
+    def __init__(self) -> None:
+        self.workflow_id: str | None = None
+
+    async def start_workflow(self, _workflow, ticket, *, id: str, task_queue: str):
+        self.workflow_id = id
+        assert id == f"ticket-{ticket.id}"
+        assert task_queue == config.TASK_QUEUE
+
+
+async def test_create_ticket_uses_full_uuid_hex_id():
+    temporal = RecordingTemporalClient()
+    app.state.temporal = temporal
+
+    response = await create_ticket(
+        CreateTicketRequest(
+            customer_email="jo@example.com",
+            subject="refund please",
+            body="I was double charged.",
+        )
+    )
+
+    assert len(response.ticket_id) == 32
+    int(response.ticket_id, 16)
+    assert temporal.workflow_id == f"ticket-{response.ticket_id}"
 
 
 async def test_ticket_lifecycle_via_api(env):

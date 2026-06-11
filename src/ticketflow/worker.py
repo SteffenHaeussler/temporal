@@ -16,7 +16,9 @@ from ticketflow.workflows import TicketWorkflow
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     client = await Client.connect(
-        config.TEMPORAL_ADDRESS, data_converter=pydantic_data_converter
+        config.TEMPORAL_ADDRESS,
+        namespace=config.TEMPORAL_NAMESPACE,
+        data_converter=pydantic_data_converter,
     )
     acts = TicketActivities(MockAgent())
     worker = Worker(
