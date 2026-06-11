@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import AsyncIterator
+from typing import Protocol, cast
 
 from temporalio.api.common.v1 import WorkflowExecution
 from temporalio.api.workflowservice.v1 import request_response_pb2
@@ -18,7 +20,33 @@ RUNNING_QUERY = WORKFLOW_QUERY + ' AND ExecutionStatus = "Running"'
 TERMINATE_REASON = "ticketflow reset"
 
 
-async def _terminate_running(client: Client) -> int:
+class _WorkflowSummary(Protocol):
+    id: str
+
+
+class _WorkflowHandle(Protocol):
+    async def terminate(self, reason: str) -> None: ...
+
+
+class _WorkflowService(Protocol):
+    async def delete_workflow_execution(
+        self, request: request_response_pb2.DeleteWorkflowExecutionRequest
+    ) -> None: ...
+
+
+class _ResetClient(Protocol):
+    @property
+    def namespace(self) -> str: ...
+
+    @property
+    def workflow_service(self) -> _WorkflowService: ...
+
+    def list_workflows(self, query: str) -> AsyncIterator[_WorkflowSummary]: ...
+
+    def get_workflow_handle(self, workflow_id: str) -> _WorkflowHandle: ...
+
+
+async def _terminate_running(client: _ResetClient) -> int:
     terminated = 0
     async for summary in client.list_workflows(RUNNING_QUERY):
         try:
@@ -31,7 +59,7 @@ async def _terminate_running(client: Client) -> int:
     return terminated
 
 
-async def _wait_until_none_running(client: Client, timeout: float) -> None:
+async def _wait_until_none_running(client: _ResetClient, timeout: float) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while loop.time() < deadline:
@@ -42,7 +70,7 @@ async def _wait_until_none_running(client: Client, timeout: float) -> None:
         await asyncio.sleep(0.5)
 
 
-async def _delete_all(client: Client) -> int:
+async def _delete_all(client: _ResetClient) -> int:
     deleted = 0
     async for summary in client.list_workflows(WORKFLOW_QUERY):
         try:
@@ -60,7 +88,7 @@ async def _delete_all(client: Client) -> int:
 
 
 async def reset_workflows(
-    client: Client, wait_timeout: float = 15.0
+    client: _ResetClient, wait_timeout: float = 15.0
 ) -> tuple[int, int]:
     """Terminate running ticket workflows, then delete all of them.
 
@@ -77,7 +105,8 @@ async def reset_workflows(
     return terminated, deleted
 
 
-async def run_reset(client: Client, db_path: str | None = None) -> dict[str, int]:
+async def run_reset(client: _ResetClient, db_path: str | None = None) -> dict[str, int]:
+    """Reset ticket workflows and clear the read model."""
     terminated, deleted = await reset_workflows(client)
     cleared = readmodel.clear(db_path)
     return {
@@ -88,6 +117,7 @@ async def run_reset(client: Client, db_path: str | None = None) -> dict[str, int
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse reset command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Terminate and delete all ticket workflows and clear "
         "the SQLite read model."
@@ -99,15 +129,17 @@ def parse_args() -> argparse.Namespace:
 
 
 async def amain(args: argparse.Namespace) -> dict[str, int]:
+    """Connect to Temporal and run the reset command."""
     client = await Client.connect(
         args.address,
         namespace=args.namespace,
         data_converter=pydantic_data_converter,
     )
-    return await run_reset(client, db_path=args.db_path)
+    return await run_reset(cast(_ResetClient, client), db_path=args.db_path)
 
 
 def main() -> int:
+    """Run the reset command."""
     args = parse_args()
     try:
         summary = asyncio.run(amain(args))

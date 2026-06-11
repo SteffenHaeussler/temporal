@@ -3,14 +3,15 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from temporalio.api.enums.v1 import task_queue_pb2
-from temporalio.api.taskqueue.v1 import message_pb2 as taskqueue_pb2
+from temporalio.api.enums.v1 import task_queue_pb2 as task_queue_enums_pb2
+from temporalio.api.taskqueue.v1 import message_pb2 as task_queue_messages_pb2
 from temporalio.api.workflowservice.v1 import request_response_pb2
 from temporalio.client import (
     Client,
@@ -36,7 +37,8 @@ QUERY_TIMEOUT = timedelta(seconds=2)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the shared Temporal client for the FastAPI app lifetime."""
     app.state.temporal = await Client.connect(
         config.TEMPORAL_ADDRESS,
         namespace=config.TEMPORAL_NAMESPACE,
@@ -56,6 +58,7 @@ if tracing_interceptor:
 
 @app.middleware("http")
 async def ticket_context_middleware(request: Request, call_next):
+    """Attach a ticket id to logs while handling ticket-specific routes."""
     parts = request.url.path.strip("/").split("/")
     token = None
     if len(parts) >= 2 and parts[0] == "tickets" and parts[1]:
@@ -68,16 +71,22 @@ async def ticket_context_middleware(request: Request, call_next):
 
 
 class CreateTicketRequest(BaseModel):
+    """Request body for starting a ticket workflow."""
+
     customer_email: str
     subject: str
     body: str
 
 
 class CreateTicketResponse(BaseModel):
+    """Response body returned after a ticket workflow starts."""
+
     ticket_id: str
 
 
 class ListTicketsResponse(BaseModel):
+    """Response body for ticket id lists returned by visibility queries."""
+
     ticket_ids: list[str]
 
 
@@ -95,10 +104,12 @@ def _handle(ticket_id: str):
     )
 
 
-async def _task_queue_poller_count(task_queue_type: int) -> int:
+async def _task_queue_poller_count(
+    task_queue_type: task_queue_enums_pb2.TaskQueueType.ValueType,
+) -> int:
     request = request_response_pb2.DescribeTaskQueueRequest(
         namespace=config.TEMPORAL_NAMESPACE,
-        task_queue=taskqueue_pb2.TaskQueue(name=config.TASK_QUEUE),
+        task_queue=task_queue_messages_pb2.TaskQueue(name=config.TASK_QUEUE),
         task_queue_type=task_queue_type,
         report_pollers=True,
     )
@@ -111,11 +122,13 @@ async def _task_queue_poller_count(task_queue_type: int) -> int:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Report whether the HTTP process is alive."""
     return {"status": "healthy", "service": "ticketflow-api"}
 
 
 @app.get("/ready")
 async def ready():
+    """Report Temporal and worker readiness for demo commands."""
     try:
         temporal_healthy = await app.state.temporal.service_client.check_health(
             timeout=READINESS_TIMEOUT
@@ -150,10 +163,10 @@ async def ready():
         )
 
     workflow_pollers = await _task_queue_poller_count(
-        task_queue_pb2.TASK_QUEUE_TYPE_WORKFLOW
+        task_queue_enums_pb2.TASK_QUEUE_TYPE_WORKFLOW
     )
     activity_pollers = await _task_queue_poller_count(
-        task_queue_pb2.TASK_QUEUE_TYPE_ACTIVITY
+        task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY
     )
     worker_healthy = workflow_pollers > 0 and activity_pollers > 0
     worker = {
@@ -175,6 +188,7 @@ async def ready():
 
 @app.post("/tickets", status_code=201)
 async def create_ticket(request: CreateTicketRequest) -> CreateTicketResponse:
+    """Start a ticket workflow and return its public id."""
     ticket = Ticket(id=uuid.uuid4().hex, **request.model_dump())
     try:
         await app.state.temporal.start_workflow(
@@ -191,6 +205,7 @@ async def create_ticket(request: CreateTicketRequest) -> CreateTicketResponse:
 
 @app.get("/tickets")
 async def list_tickets(status: TicketStatus) -> ListTicketsResponse:
+    """List ticket ids with the requested workflow status."""
     query = f'WorkflowType = "TicketWorkflow" and TicketStatus = "{status.value}"'
     ticket_ids = []
     async for workflow in app.state.temporal.list_workflows(query):
@@ -202,6 +217,7 @@ async def list_tickets(status: TicketStatus) -> ListTicketsResponse:
 
 @app.get("/tickets/{ticket_id}")
 async def get_ticket(ticket_id: str) -> TicketStatusInfo:
+    """Return live workflow status or archived read-model status."""
     try:
         return await _handle(ticket_id).query(
             TicketWorkflow.status, rpc_timeout=QUERY_TIMEOUT
@@ -246,6 +262,7 @@ async def get_ticket(ticket_id: str) -> TicketStatusInfo:
 async def submit_approval(
     ticket_id: str, decision: ApprovalDecision
 ) -> dict[str, TicketStatus]:
+    """Submit a human approval decision to a waiting workflow."""
     try:
         status = await _handle(ticket_id).execute_update(
             TicketWorkflow.submit_approval,

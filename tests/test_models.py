@@ -55,7 +55,7 @@ def test_refund_action_requires_positive_refund_amount():
 
 def test_approval_decision_requires_approver():
     with pytest.raises(ValidationError):
-        ApprovalDecision(approved=True)
+        ApprovalDecision.model_validate({"approved": True})
 
     decision = ApprovalDecision(approved=True, approver="sam@example.com")
     assert decision.approver == "sam@example.com"

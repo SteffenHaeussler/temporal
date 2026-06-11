@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch reset
+.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker jaeger search-attributes worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 API_URL ?= http://localhost:8000
@@ -22,7 +22,10 @@ format:
 	uv run ruff check --fix .
 	uv run ruff format .
 
-check: format-check lint test
+typecheck:
+	uv run pyright
+
+check: format-check lint typecheck test
 
 test:
 	uv run pytest

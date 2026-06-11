@@ -291,7 +291,7 @@ async def test_ticket_status_search_attribute_tracks_approval_inbox():
                 raise AssertionError("ticket never appeared in approval inbox")
 
             status = await handle.execute_update(
-                TicketWorkflow.submit_approval,
+                "submit_approval",
                 ApprovalDecision(approved=True, approver="sam@example.com"),
                 result_type=TicketStatus,
             )

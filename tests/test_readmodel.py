@@ -4,15 +4,15 @@ from ticketflow import config, readmodel
 from ticketflow.models import TicketResult, TicketStatus
 
 
-def make_result(ticket_id: str = "t-1", **overrides) -> TicketResult:
-    defaults = dict(
-        ticket_id=ticket_id,
-        status=TicketStatus.RESOLVED,
-        reply_text="All done.",
-        refund_executed=False,
-    )
+def make_result(ticket_id: str = "t-1", **overrides: object) -> TicketResult:
+    defaults: dict[str, object] = {
+        "ticket_id": ticket_id,
+        "status": TicketStatus.RESOLVED,
+        "reply_text": "All done.",
+        "refund_executed": False,
+    }
     defaults.update(overrides)
-    return TicketResult(**defaults)
+    return TicketResult.model_validate(defaults)
 
 
 def test_save_and_load_roundtrip(tmp_path):

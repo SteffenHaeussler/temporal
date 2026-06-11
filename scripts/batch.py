@@ -37,6 +37,7 @@ class BatchTimeoutError(RuntimeError):
 
 
 def make_ticket_payloads(count: int) -> list[dict[str, str]]:
+    """Build varied ticket creation payloads for a batch run."""
     payloads = []
     for index in range(count):
         template = KEYWORD_TEMPLATES[index % len(KEYWORD_TEMPLATES)]
@@ -56,6 +57,7 @@ async def create_tickets(
     *,
     concurrency: int,
 ) -> list[str]:
+    """Create tickets concurrently and return their ids."""
     semaphore = asyncio.Semaphore(concurrency)
 
     async def create_one(payload: dict[str, str]) -> str:
@@ -75,6 +77,7 @@ async def poll_ticket_statuses(
     poll_interval: float = 1.0,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, str]:
+    """Poll tickets until every id reaches a settled status."""
     pending = set(ticket_ids)
     statuses: dict[str, str] = {}
     loop = asyncio.get_running_loop()
@@ -105,6 +108,7 @@ async def poll_ticket_statuses(
 
 
 def status_histogram(statuses: dict[str, str]) -> dict[str, int]:
+    """Summarize settled statuses and include the total ticket count."""
     counts = Counter(statuses.values())
     histogram = {status: counts[status] for status in sorted(counts)}
     histogram["total"] = len(statuses)
@@ -118,6 +122,7 @@ async def run_batch(
     concurrency: int,
     timeout: float,
 ) -> dict[str, int]:
+    """Create a batch of tickets and return the settled status histogram."""
     payloads = make_ticket_payloads(count)
     async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
         ticket_ids = await create_tickets(client, payloads, concurrency=concurrency)
@@ -130,11 +135,13 @@ async def run_batch(
 
 
 def print_histogram(histogram: dict[str, int]) -> None:
+    """Print a status histogram in CLI-friendly form."""
     for status, count in histogram.items():
         print(f"{status}: {count}")
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse batch driver command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Create many Ticketflow tickets and print a status histogram."
     )
@@ -160,6 +167,7 @@ def _positive_float(value: str) -> float:
 
 
 def main() -> int:
+    """Run the batch driver command."""
     args = parse_args()
     try:
         histogram = asyncio.run(

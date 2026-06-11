@@ -12,11 +12,14 @@ import httpx
 
 @dataclass(frozen=True)
 class CheckResult:
+    """Stack readiness result and lines to print to the user."""
+
     exit_code: int
     lines: list[str]
 
 
 async def check_stack(client: httpx.AsyncClient) -> CheckResult:
+    """Check API, Temporal, and worker readiness through the HTTP API."""
     try:
         health = await client.get("/health")
     except httpx.HTTPError:
@@ -86,17 +89,20 @@ def _config_value(config: dict[str, Any], key: str) -> str:
 
 
 def lines_to_print(result: CheckResult, *, quiet: bool) -> list[str]:
+    """Return diagnostics unless quiet mode suppresses successful checks."""
     if quiet and result.exit_code == 0:
         return []
     return result.lines
 
 
 async def run(*, base_url: str) -> CheckResult:
+    """Run the stack check against a base API URL."""
     async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
         return await check_stack(client)
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse doctor command-line arguments."""
     parser = argparse.ArgumentParser(
         description=(
             "Check whether the local Ticketflow API, Temporal server, "
@@ -113,6 +119,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the doctor command."""
     args = parse_args()
     result = asyncio.run(run(base_url=args.base_url))
     for line in lines_to_print(result, quiet=args.quiet):

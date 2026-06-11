@@ -45,12 +45,15 @@ REPLY_TEMPLATES: dict[TicketCategory, str] = {
 
 
 class MockAgent:
+    """Seedable agent implementation for local demos and tests."""
+
     def __init__(
         self,
         seed: int | None = None,
         failure_rate: float = 0.1,
         refund_rate: float = 0.25,
     ):
+        """Create a mock agent with configurable transient failures."""
         self._rng = random.Random(seed)
         self._failure_rate = failure_rate
         self._refund_rate = refund_rate
@@ -60,6 +63,7 @@ class MockAgent:
             raise AgentOverloadedError("mock agent backend overloaded")
 
     async def classify(self, ticket: Ticket) -> Classification:
+        """Classify by keyword with randomized confidence."""
         self._maybe_fail()
         text = f"{ticket.subject} {ticket.body}".lower()
         category = next(
@@ -78,6 +82,7 @@ class MockAgent:
     async def draft_reply(
         self, ticket: Ticket, classification: Classification
     ) -> DraftReply:
+        """Draft a template reply and occasionally propose a refund."""
         self._maybe_fail()
         if self._rng.random() < self._refund_rate:
             action = ProposedAction(
