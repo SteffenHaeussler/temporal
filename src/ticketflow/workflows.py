@@ -6,6 +6,7 @@ from typing import cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from ticketflow.activities import TicketActivities
@@ -53,20 +54,34 @@ class TicketWorkflow:
         self._ticket = ticket
 
         self._status = TicketStatus.CLASSIFYING
-        self._classification = await workflow.execute_activity_method(
-            TicketActivities.classify_ticket,
-            ticket,
-            start_to_close_timeout=ACTIVITY_TIMEOUT,
-            retry_policy=RETRY_POLICY,
-        )
+        try:
+            self._classification = await workflow.execute_activity_method(
+                TicketActivities.classify_ticket,
+                ticket,
+                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_POLICY,
+            )
+        except ActivityError:
+            return await self._finish(
+                reply_text=ESCALATION_REPLY,
+                refund=False,
+                status=TicketStatus.ESCALATED,
+            )
 
         self._status = TicketStatus.DRAFTING
-        self._draft = await workflow.execute_activity_method(
-            TicketActivities.draft_reply,
-            args=[ticket, self._classification],
-            start_to_close_timeout=ACTIVITY_TIMEOUT,
-            retry_policy=RETRY_POLICY,
-        )
+        try:
+            self._draft = await workflow.execute_activity_method(
+                TicketActivities.draft_reply,
+                args=[ticket, self._classification],
+                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_POLICY,
+            )
+        except ActivityError:
+            return await self._finish(
+                reply_text=ESCALATION_REPLY,
+                refund=False,
+                status=TicketStatus.ESCALATED,
+            )
 
         needs_approval = (
             self._draft.action.type == ActionType.REFUND

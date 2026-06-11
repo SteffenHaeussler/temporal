@@ -77,18 +77,18 @@ In a ticket system, "fall back to a human" is the correct terminal state for
 infrastructure failure — same as the approval timeout.
 
 **Steps:**
-- [ ] In `TicketWorkflow.run`, wrap the `classify_ticket` and `draft_reply`
+- [x] In `TicketWorkflow.run`, wrap the `classify_ticket` and `draft_reply`
       activity calls in `try/except temporalio.exceptions.ActivityError`.
-- [ ] On failure, return via `self._finish(..., status=TicketStatus.ESCALATED)`
+- [x] On failure, return via `self._finish(..., status=TicketStatus.ESCALATED)`
       with `ESCALATION_REPLY` (note: `send_reply` inside `_finish` can still
       run — it's a different activity with its own retries; think about
       whether you want a fallback if *that* also fails).
-- [ ] Rewrite `test_workflow_fails_when_retries_are_exhausted` in
+- [x] Rewrite `test_workflow_fails_when_retries_are_exhausted` in
       `tests/test_workflow.py` to assert `ESCALATED` instead of
       `WorkflowFailureError` (reuse `FlakyAgent` with `failures=999`).
 
 **Verify:**
-- [ ] `make test`.
+- [x] `make test`.
 - [ ] In the Web UI, the workflow shows 5 failed activity attempts and still
       *completes* (green), ending in the escalation reply.
 
