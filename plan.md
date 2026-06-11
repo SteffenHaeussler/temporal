@@ -154,23 +154,24 @@ it ever hits history) and returns a synchronous result to the caller. This is
 the single biggest Temporal learning item in this plan.
 
 **Steps:**
-- [ ] Replace `@workflow.signal submit_approval` with `@workflow.update`
+- [x] Replace `@workflow.signal submit_approval` with `@workflow.update`
       (it can return e.g. the resulting `TicketStatus` or an ack model).
-- [ ] Add the validator via `@submit_approval.validator`: raise unless
+- [x] Add the validator via `@submit_approval.validator`: raise unless
       `self._status == TicketStatus.AWAITING_APPROVAL` and
       `self._decision is None`. Validators must be synchronous, must not
       mutate state, and rejections leave no trace in history.
-- [ ] API: call `handle.execute_update(TicketWorkflow.submit_approval, decision)`
+- [x] API: call `handle.execute_update(TicketWorkflow.submit_approval, decision)`
       and surface a rejected update as 409.
-- [ ] Update tests in `tests/test_workflow.py` / `tests/test_api.py`; add a
+- [x] Update tests in `tests/test_workflow.py` / `tests/test_api.py`; add a
       duplicate-approval test (second update is rejected) and an
       approval-before-awaiting test if you can race one (optional).
-- [ ] Read the event history in the Web UI: find `WorkflowExecutionUpdate*`
+- [x] Read the event history in the Web UI or CLI: find `WorkflowExecutionUpdate*`
       events and compare with the old signal events.
 
 **Verify:**
-- [ ] `make test`; `make approve` now returns the new status synchronously;
-      a second `make approve` returns 409.
+- [x] `make test`.
+- [x] With the local stack running, `make approve` now returns the new status
+      synchronously; a second `make approve` returns 409.
 
 ### Task 8: Record who approved
 
