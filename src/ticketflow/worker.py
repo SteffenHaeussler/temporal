@@ -11,6 +11,7 @@ from ticketflow import config
 from ticketflow.activities import TicketActivities
 from ticketflow.agent.mock import MockAgent
 from ticketflow.logging import setup_logging
+from ticketflow.tracing import sandboxed_runner_with_otel, setup_tracing
 from ticketflow.workflows import TicketWorkflow
 
 logger = logging.getLogger(__name__)
@@ -18,10 +19,12 @@ logger = logging.getLogger(__name__)
 
 async def main() -> None:
     setup_logging()
+    interceptor = setup_tracing(service_name="ticketflow-worker")
     client = await Client.connect(
         config.TEMPORAL_ADDRESS,
         namespace=config.TEMPORAL_NAMESPACE,
         data_converter=pydantic_data_converter,
+        interceptors=[interceptor] if interceptor else [],
     )
     acts = TicketActivities(MockAgent())
     worker = Worker(
@@ -34,6 +37,7 @@ async def main() -> None:
             acts.send_reply,
             acts.execute_refund,
         ],
+        workflow_runner=sandboxed_runner_with_otel(),
     )
     logger.info(
         "Worker running",

@@ -60,6 +60,30 @@ proposals and low-confidence drafts wait for approval.
 Watch the workflow history, including retries, updates, and timers, in the
 Temporal Web UI at http://localhost:8233.
 
+## Tracing
+
+OpenTelemetry tracing is off by default. Enable it with
+`TICKETFLOW_TRACE_EXPORTER`:
+
+- `none` (default): tracing disabled
+- `console`: spans printed to stdout
+- `otlp`: spans exported over OTLP HTTP to `TICKETFLOW_OTLP_ENDPOINT`
+  (default `http://localhost:4318/v1/traces`)
+
+`make server-docker` also starts Jaeger, which accepts OTLP exports; with
+`make server` (Temporal CLI), start Jaeger separately via `make jaeger`. Run
+the worker and API with the exporter enabled:
+
+```bash
+TICKETFLOW_TRACE_EXPORTER=otlp make worker
+TICKETFLOW_TRACE_EXPORTER=otlp make api
+```
+
+Create a ticket and open the Jaeger UI at http://localhost:16686: each ticket
+produces one trace from `POST /tickets` through `StartWorkflow:TicketWorkflow`,
+`RunWorkflow:TicketWorkflow`, and a `RunActivity:<name>` span per step
+(classify, draft, refund, send reply).
+
 ## Tests
 
 ```bash

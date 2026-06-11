@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker worker api ticket status approve reject
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api ticket status approve reject
 
 install:
 	uv sync
@@ -33,6 +33,9 @@ server:
 
 server-docker:
 	docker compose up
+
+jaeger:
+	docker compose up jaeger
 
 worker:
 	uv run python -m ticketflow.worker
