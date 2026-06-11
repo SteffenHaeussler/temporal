@@ -63,6 +63,7 @@ Temporal Web UI at http://localhost:8233.
 ## Tests
 
 ```bash
+make check
 make test
 make coverage
 ```
@@ -71,5 +72,10 @@ Workflow tests run against Temporal's time-skipping test environment, so the
 "wait 24 hours for approval" path completes instantly. The first run downloads
 a test-server binary; no Temporal CLI, server, or Docker is needed for tests.
 
+`make check` runs the local pre-PR gate: Ruff formatting check, Ruff linting,
+and the normal test suite. `make install` also installs a pre-push hook that
+runs `make check` automatically before a branch is pushed.
+
 `make test` runs the normal suite. `make coverage` runs the same suite with a
-terminal coverage report and missing-line details.
+terminal coverage report and missing-line details. Run `make format` to apply
+Ruff formatting and import fixes locally.

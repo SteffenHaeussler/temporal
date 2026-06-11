@@ -7,8 +7,7 @@ from temporalio.client import Client, WorkflowHandle
 from temporalio.worker import Worker
 
 from ticketflow.activities import TicketActivities
-from ticketflow.agent.base import Agent
-from ticketflow.agent.base import AgentOverloadedError
+from ticketflow.agent.base import Agent, AgentOverloadedError
 from ticketflow.models import (
     ActionType,
     Classification,

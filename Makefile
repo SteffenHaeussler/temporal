@@ -1,7 +1,24 @@
-.PHONY: install test coverage server server-docker worker api ticket status approve reject
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker worker api ticket status approve reject
 
 install:
 	uv sync
+	uv run pre-commit install --hook-type pre-push
+
+install-hooks:
+	uv run pre-commit install --hook-type pre-push
+
+lint:
+	uv run ruff check .
+
+format-check:
+	uv run ruff format --check .
+
+format:
+	uv run ruff format .
+	uv run ruff check --fix .
+	uv run ruff format .
+
+check: format-check lint test
 
 test:
 	uv run pytest

@@ -84,7 +84,9 @@ async def get_ticket(ticket_id: str) -> TicketStatusInfo:
 
 
 @app.post("/tickets/{ticket_id}/approval")
-async def submit_approval(ticket_id: str, decision: ApprovalDecision) -> dict[str, bool]:
+async def submit_approval(
+    ticket_id: str, decision: ApprovalDecision
+) -> dict[str, bool]:
     try:
         await _handle(ticket_id).signal(TicketWorkflow.submit_approval, decision)
     except RPCError as exc:

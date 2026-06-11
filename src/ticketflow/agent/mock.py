@@ -63,7 +63,11 @@ class MockAgent:
         self._maybe_fail()
         text = f"{ticket.subject} {ticket.body}".lower()
         category = next(
-            (category for keyword, category in KEYWORD_CATEGORIES.items() if keyword in text),
+            (
+                category
+                for keyword, category in KEYWORD_CATEGORIES.items()
+                if keyword in text
+            ),
             TicketCategory.GENERAL,
         )
         return Classification(
