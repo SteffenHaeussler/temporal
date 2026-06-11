@@ -200,17 +200,17 @@ demonstrating why the approval inbox (next task) is needed. Also a reusable
 load driver for later tasks.
 
 **Steps:**
-- [ ] Add `scripts/batch.py`: async `httpx.AsyncClient` (httpx is already a
+- [x] Add `scripts/batch.py`: async `httpx.AsyncClient` (httpx is already a
       dev dependency, visible to `uv run`) that POSTs N tickets (default 100)
       to `localhost:8000/tickets`, bounded by `asyncio.Semaphore(10)`.
-- [ ] Vary subject/body by sampling from a small pool hitting the mock agent's
+- [x] Vary subject/body by sampling from a small pool hitting the mock agent's
       keywords (`agent/mock.py:16` — e.g. "refund", "crash", "password", and
       one keyword-free entry) so all four categories appear.
-- [ ] Then poll `GET /tickets/{id}` until every ticket reaches a settled state
+- [x] Then poll `GET /tickets/{id}` until every ticket reaches a settled state
       (`resolved`, `escalated`, `rejected`, or `awaiting_approval`), with an
       overall timeout; print a status histogram
       (e.g. `resolved: 38, awaiting_approval: 62`).
-- [ ] Makefile: `N ?= 100` and a `batch` target running
+- [x] Makefile: `N ?= 100` and a `batch` target running
       `uv run python scripts/batch.py --count $(N)`; add `batch` to `.PHONY`.
 
 **Verify:**

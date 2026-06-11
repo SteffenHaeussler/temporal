@@ -1,4 +1,6 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api ticket status approve reject
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api ticket status approve reject batch
+
+N ?= 100
 
 install:
 	uv sync
@@ -62,3 +64,6 @@ reject:
 	curl -s -X POST localhost:8000/tickets/$(ID)/approval \
 	  -H 'Content-Type: application/json' \
 	  -d '{"approved": false, "approver": "make", "note": "rejected via make"}'
+
+batch:
+	uv run python scripts/batch.py --count $(N)
