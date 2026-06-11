@@ -19,14 +19,14 @@ Web UI at http://localhost:8233.
 point the same code at different Temporal clusters and namespaces via env vars.
 
 **Steps:**
-- [ ] In `config.py`, read `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, and
+- [x] In `config.py`, read `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, and
       `TICKETFLOW_TASK_QUEUE` from `os.environ` with the current values as defaults.
-- [ ] Pass `namespace=` to both `Client.connect()` calls
+- [x] Pass `namespace=` to both `Client.connect()` calls
       (`worker.py:18`, `api.py:19`).
 
 **Verify:**
-- [ ] `make test` still passes (tests use the time-skipping env, not the address).
-- [ ] `TEMPORAL_ADDRESS=localhost:9999 make worker` fails to connect; unset works.
+- [x] `make test` still passes (tests use the time-skipping env, not the address).
+- [x] `TEMPORAL_ADDRESS=localhost:9999 make worker` fails to connect; unset works.
 
 ### Task 2: Full-UUID ticket IDs
 
@@ -36,11 +36,11 @@ collision means `start_workflow` raises `WorkflowAlreadyStartedError` and the
 new ticket is silently lost as a duplicate of an old one.
 
 **Steps:**
-- [ ] Use the full `uuid.uuid4().hex` (or `str(uuid.uuid4())`).
-- [ ] Check `tests/helpers.py:24` (`make_ticket`) and align.
+- [x] Use the full `uuid.uuid4().hex` (or `str(uuid.uuid4())`).
+- [x] Check `tests/helpers.py:24` (`make_ticket`) and align.
 
 **Verify:**
-- [ ] `make ticket` returns a long ID; `make status ID=<id>` still works.
+- [x] `make ticket` returns a long ID; `make status ID=<id>` still works.
 
 ### Task 3: Tighten the Pydantic models
 
@@ -51,18 +51,18 @@ it is *created*, not when it is *used*. Bonus: the pydantic data converter
 enforces these constraints on every activity input/output crossing Temporal.
 
 **Steps:**
-- [ ] `Classification.confidence` and `DraftReply.confidence`:
+- [x] `Classification.confidence` and `DraftReply.confidence`:
       `Field(ge=0.0, le=1.0)`.
-- [ ] `ProposedAction.refund_amount`: `Field(default=None, gt=0)`.
-- [ ] Add a `@model_validator` on `ProposedAction`: `type == REFUND` requires
+- [x] `ProposedAction.refund_amount`: `Field(default=None, gt=0)`.
+- [x] Add a `@model_validator` on `ProposedAction`: `type == REFUND` requires
       `refund_amount` to be set.
-- [ ] Simplify the now-impossible refund-amount guard in
+- [x] Simplify the now-impossible refund-amount guard in
       `TicketWorkflow._finish` (`workflows.py:126`).
-- [ ] Add a small model test in `tests/test_models.py`
+- [x] Add a small model test in `tests/test_models.py`
       (e.g. REFUND without amount raises `ValidationError`).
 
 **Verify:**
-- [ ] `make test`; new validation test passes.
+- [x] `make test`; new validation test passes.
 
 ---
 
@@ -121,21 +121,24 @@ outage masquerades as "ticket not found". Signaling a completed ticket and
 re-creating an existing ticket also deserve honest status codes.
 
 **Steps:**
-- [ ] In both handlers, only return 404 when
+- [x] In both handlers, only return 404 when
       `exc.status == temporalio.service.RPCStatusCode.NOT_FOUND`; re-raise
       otherwise (FastAPI turns it into a 500, which is the truth).
-- [ ] In the approval handler, map "workflow already completed" to 409 with a
+- [x] In the approval handler, map "workflow already completed" to 409 with a
       message like "ticket already decided" (inspect what the dev server
       returns for a signal to a closed workflow — check `exc.status` and
-      `exc.message` in a quick experiment).
-- [ ] In `create_ticket`, catch
+      `exc.message` in a quick experiment). Experiment result: a signal to a
+      closed workflow is also `NOT_FOUND`; only the message differs
+      ("Completed workflow" on the test server, "...already completed" on the
+      dev server), so the handler branches on `"completed" in exc.message`.
+- [x] In `create_ticket`, catch
       `temporalio.exceptions.WorkflowAlreadyStartedError` → 409.
-- [ ] Add tests: approval on a resolved ticket → 409 (run a high-confidence
+- [x] Add tests: approval on a resolved ticket → 409 (run a high-confidence
       ticket to completion first, reuse `ScriptedAgent` +
       `reply_only_draft(confidence=0.9)`).
 
 **Verify:**
-- [ ] `make test`; manually: approve the same ticket twice via `make approve`,
+- [x] `make test`; manually: approve the same ticket twice via `make approve`,
       second call returns 409.
 
 ---
