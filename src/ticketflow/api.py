@@ -3,9 +3,14 @@
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from temporalio.api.enums.v1 import task_queue_pb2
+from temporalio.api.taskqueue.v1 import message_pb2 as taskqueue_pb2
+from temporalio.api.workflowservice.v1 import request_response_pb2
 from temporalio.client import Client, WorkflowUpdateFailedError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import WorkflowAlreadyStartedError
@@ -21,6 +26,7 @@ setup_logging()
 tracing_interceptor = setup_tracing(service_name="ticketflow-api")
 
 logger = logging.getLogger(__name__)
+READINESS_TIMEOUT = timedelta(seconds=2)
 
 
 @asynccontextmanager
@@ -65,10 +71,96 @@ class CreateTicketResponse(BaseModel):
     ticket_id: str
 
 
+def _readiness_config() -> dict[str, str]:
+    return {
+        "address": config.TEMPORAL_ADDRESS,
+        "namespace": config.TEMPORAL_NAMESPACE,
+        "task_queue": config.TASK_QUEUE,
+    }
+
+
 def _handle(ticket_id: str):
     return app.state.temporal.get_workflow_handle_for(
         TicketWorkflow.run, f"ticket-{ticket_id}"
     )
+
+
+async def _task_queue_poller_count(task_queue_type: int) -> int:
+    request = request_response_pb2.DescribeTaskQueueRequest(
+        namespace=config.TEMPORAL_NAMESPACE,
+        task_queue=taskqueue_pb2.TaskQueue(name=config.TASK_QUEUE),
+        task_queue_type=task_queue_type,
+        report_pollers=True,
+    )
+    workflow_service = app.state.temporal.service_client.workflow_service
+    response = await workflow_service.describe_task_queue(
+        request, timeout=READINESS_TIMEOUT
+    )
+    return len(response.pollers)
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "healthy", "service": "ticketflow-api"}
+
+
+@app.get("/ready")
+async def ready():
+    try:
+        temporal_healthy = await app.state.temporal.service_client.check_health(
+            timeout=READINESS_TIMEOUT
+        )
+    except Exception:
+        logger.warning("Temporal health check failed", exc_info=True)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unavailable",
+                "temporal": {
+                    "status": "unavailable",
+                    "message": "Temporal server is not reachable. Run `make server`.",
+                },
+                "worker": {"status": "unknown"},
+                "config": _readiness_config(),
+            },
+        )
+
+    if not temporal_healthy:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unavailable",
+                "temporal": {
+                    "status": "unavailable",
+                    "message": "Temporal workflow service is not serving.",
+                },
+                "worker": {"status": "unknown"},
+                "config": _readiness_config(),
+            },
+        )
+
+    workflow_pollers = await _task_queue_poller_count(
+        task_queue_pb2.TASK_QUEUE_TYPE_WORKFLOW
+    )
+    activity_pollers = await _task_queue_poller_count(
+        task_queue_pb2.TASK_QUEUE_TYPE_ACTIVITY
+    )
+    worker_healthy = workflow_pollers > 0 and activity_pollers > 0
+    worker = {
+        "status": "healthy" if worker_healthy else "degraded",
+        "task_queue": config.TASK_QUEUE,
+        "workflow_pollers": workflow_pollers,
+        "activity_pollers": activity_pollers,
+    }
+    if not worker_healthy:
+        worker["message"] = "No worker pollers found. Run `make worker`."
+
+    return {
+        "status": "healthy" if worker_healthy else "degraded",
+        "temporal": {"status": "healthy"},
+        "worker": worker,
+        "config": _readiness_config(),
+    }
 
 
 @app.post("/tickets", status_code=201)

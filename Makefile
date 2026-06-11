@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api ticket status approve reject batch
+.PHONY: install install-hooks lint format-check format check test coverage server server-docker jaeger worker api doctor ticket status approve reject batch
 
 N ?= 100
 
@@ -45,9 +45,13 @@ worker:
 api:
 	uv run uvicorn ticketflow.api:app --reload
 
+doctor:
+	uv run python scripts/doctor.py
+
 ## --- drive a ticket through (usage: make ticket / make status ID=abc123) ---
 
 ticket:
+	@uv run python scripts/doctor.py --quiet
 	curl -s -X POST localhost:8000/tickets \
 	  -H 'Content-Type: application/json' \
 	  -d '{"customer_email": "jo@example.com", "subject": "refund please", "body": "I was double charged."}'
