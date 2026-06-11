@@ -1,7 +1,11 @@
+import asyncio
 import uuid
 
 import pytest
+from temporalio import activity
+from temporalio.client import WorkflowUpdateFailedError, WorkflowUpdateStage
 from temporalio.exceptions import ApplicationError
+from temporalio.worker import Worker
 
 from tests.helpers import (
     FlakyAgent,
@@ -13,8 +17,9 @@ from tests.helpers import (
     reply_only_draft,
     wait_for_status,
 )
+from ticketflow.activities import TicketActivities
 from ticketflow.agent.base import AgentOverloadedError
-from ticketflow.models import ApprovalDecision, TicketStatus
+from ticketflow.models import ApprovalDecision, Ticket, TicketStatus
 from ticketflow.workflows import ESCALATION_REPLY, REJECTION_REPLY, TicketWorkflow
 
 
@@ -35,6 +40,30 @@ class DraftFailingAgent:
     async def draft_reply(self, ticket, classification):
         self.draft_calls += 1
         raise AgentOverloadedError("draft unavailable")
+
+
+class BlockingTicketActivities(TicketActivities):
+    def __init__(self, agent):
+        super().__init__(agent)
+        self.release_reply = asyncio.Event()
+
+    @activity.defn
+    async def send_reply(self, ticket: Ticket, reply_text: str) -> None:
+        await self.release_reply.wait()
+
+
+def make_blocking_reply_worker(client, agent, task_queue, activities):
+    return Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[TicketWorkflow],
+        activities=[
+            activities.classify_ticket,
+            activities.draft_reply,
+            activities.send_reply,
+            activities.execute_refund,
+        ],
+    )
 
 
 async def test_high_confidence_reply_resolves_without_approval(env):
@@ -120,12 +149,14 @@ async def test_approved_refund_executes_and_resolves(env):
         assert info.draft is not None
         assert info.draft.action.refund_amount == 42.0
 
-        await handle.signal(
+        status = await handle.execute_update(
             TicketWorkflow.submit_approval,
             ApprovalDecision(approved=True, note="ok, refund them"),
+            result_type=TicketStatus,
         )
         result = await handle.result()
 
+    assert status == TicketStatus.RESOLVED
     assert result.status == TicketStatus.RESOLVED
     assert result.refund_executed is True
 
@@ -142,12 +173,14 @@ async def test_rejected_refund_sends_fallback_reply(env):
             task_queue=queue,
         )
         await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
-        await handle.signal(
+        status = await handle.execute_update(
             TicketWorkflow.submit_approval,
             ApprovalDecision(approved=False, note="amount looks wrong"),
+            result_type=TicketStatus,
         )
         result = await handle.result()
 
+    assert status == TicketStatus.REJECTED
     assert result.status == TicketStatus.REJECTED
     assert result.reply_text == REJECTION_REPLY
     assert result.refund_executed is False
@@ -165,13 +198,53 @@ async def test_low_confidence_reply_requires_approval(env):
             task_queue=queue,
         )
         await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
-        await handle.signal(
-            TicketWorkflow.submit_approval, ApprovalDecision(approved=True)
+        status = await handle.execute_update(
+            TicketWorkflow.submit_approval,
+            ApprovalDecision(approved=True),
+            result_type=TicketStatus,
         )
         result = await handle.result()
 
+    assert status == TicketStatus.RESOLVED
     assert result.status == TicketStatus.RESOLVED
     assert result.refund_executed is False
+
+
+async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(env):
+    agent = ScriptedAgent(billing_classification(), refund_draft(amount=42.0))
+    ticket = make_ticket()
+    queue = unique_queue()
+    activities = BlockingTicketActivities(agent)
+    async with make_blocking_reply_worker(env.client, agent, queue, activities):
+        handle = await env.client.start_workflow(
+            TicketWorkflow.run,
+            ticket,
+            id=f"ticket-{ticket.id}",
+            task_queue=queue,
+        )
+        await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
+
+        first = await handle.start_update(
+            TicketWorkflow.submit_approval,
+            ApprovalDecision(approved=True, note="first approval"),
+            wait_for_stage=WorkflowUpdateStage.ACCEPTED,
+            result_type=TicketStatus,
+        )
+        await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
+
+        with pytest.raises(WorkflowUpdateFailedError):
+            await handle.execute_update(
+                TicketWorkflow.submit_approval,
+                ApprovalDecision(approved=False, note="duplicate approval"),
+                result_type=TicketStatus,
+            )
+
+        activities.release_reply.set()
+        assert await first.result() == TicketStatus.RESOLVED
+        result = await handle.result()
+
+    assert result.status == TicketStatus.RESOLVED
+    assert result.refund_executed is True
 
 
 async def test_unanswered_approval_escalates_after_timeout(env):

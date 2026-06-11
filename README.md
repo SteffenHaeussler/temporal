@@ -15,7 +15,7 @@ POST /tickets --> TicketWorkflow
         refund proposed OR confidence < 0.75?
               | no                  | yes
               v                     v
-          send reply        wait for approval signal (max 24h)
+          send reply        wait for approval update (max 24h)
           RESOLVED          |- approved -> refund + reply -> RESOLVED
                             |- rejected -> fallback reply -> REJECTED
                             `- timeout  -> escalation reply -> ESCALATED
@@ -57,7 +57,7 @@ make reject ID=<ID>
 The mock agent is random. Check status to see which path a ticket took; refund
 proposals and low-confidence drafts wait for approval.
 
-Watch the workflow history, including retries, signals, and timers, in the
+Watch the workflow history, including retries, updates, and timers, in the
 Temporal Web UI at http://localhost:8233.
 
 ## Tests

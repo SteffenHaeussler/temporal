@@ -119,9 +119,20 @@ class TicketWorkflow:
             status=TicketStatus.RESOLVED,
         )
 
-    @workflow.signal
-    def submit_approval(self, decision: ApprovalDecision) -> None:
+    @workflow.update
+    async def submit_approval(self, decision: ApprovalDecision) -> TicketStatus:
         self._decision = decision
+        await workflow.wait_condition(
+            lambda: self._status != TicketStatus.AWAITING_APPROVAL
+        )
+        return self._status
+
+    @submit_approval.validator
+    def validate_submit_approval(self, _decision: ApprovalDecision) -> None:
+        if self._status != TicketStatus.AWAITING_APPROVAL or self._decision is not None:
+            raise ApplicationError(
+                "ticket is not awaiting approval", non_retryable=True
+            )
 
     @workflow.query
     def status(self) -> TicketStatusInfo:

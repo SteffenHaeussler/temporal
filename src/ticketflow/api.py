@@ -6,14 +6,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowUpdateFailedError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
 from ticketflow import config
 from ticketflow.logging import reset_ticket_context, set_ticket_context, setup_logging
-from ticketflow.models import ApprovalDecision, Ticket, TicketStatusInfo
+from ticketflow.models import ApprovalDecision, Ticket, TicketStatus, TicketStatusInfo
 from ticketflow.workflows import TicketWorkflow
 
 setup_logging()
@@ -92,18 +92,28 @@ async def get_ticket(ticket_id: str) -> TicketStatusInfo:
 @app.post("/tickets/{ticket_id}/approval")
 async def submit_approval(
     ticket_id: str, decision: ApprovalDecision
-) -> dict[str, bool]:
+) -> dict[str, TicketStatus]:
     try:
-        await _handle(ticket_id).signal(TicketWorkflow.submit_approval, decision)
+        status = await _handle(ticket_id).execute_update(
+            TicketWorkflow.submit_approval,
+            decision,
+            result_type=TicketStatus,
+        )
+    except WorkflowUpdateFailedError as exc:
+        raise HTTPException(
+            status_code=409, detail="ticket is not awaiting approval"
+        ) from exc
     except RPCError as exc:
         if exc.status != RPCStatusCode.NOT_FOUND:
             raise
-        # Signaling a closed workflow is also NOT_FOUND; only the message
-        # distinguishes it ("Completed workflow" on the test server,
-        # "workflow execution already completed" on the dev server).
-        if "completed" in exc.message.lower():
+        # Updating a closed workflow is also NOT_FOUND; only the message
+        # distinguishes it from a workflow id that never existed.
+        message = exc.message.lower()
+        if "completed" in message or (
+            message.startswith("update ") and message.endswith(" not found")
+        ):
             raise HTTPException(
                 status_code=409, detail="ticket already decided"
             ) from exc
         raise HTTPException(status_code=404, detail="ticket not found") from exc
-    return {"ok": True}
+    return {"status": status}

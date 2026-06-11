@@ -78,6 +78,7 @@ async def test_ticket_lifecycle_via_api(env):
                 json={"approved": True, "note": "looks good"},
             )
             assert approved.status_code == 200
+            assert approved.json() == {"status": TicketStatus.RESOLVED}
 
             for _ in range(100):
                 status = await http.get(f"/tickets/{ticket_id}")
