@@ -19,7 +19,7 @@ async def test_check_stack_reports_api_down():
     ]
 
 
-async def test_check_stack_reports_missing_worker_without_failing():
+async def test_check_stack_fails_when_worker_pollers_are_missing():
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "healthy"})
@@ -47,7 +47,7 @@ async def test_check_stack_reports_missing_worker_without_failing():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         result = await doctor.check_stack(client)
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert result.lines == [
         "api: healthy",
         "temporal: healthy (localhost:7233, namespace default)",
