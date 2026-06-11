@@ -5,3 +5,8 @@ services:
     ports:
       - "7233:7233"   # gRPC (SDK clients)
       - "8233:8233"   # Web UI
+  jaeger:
+    image: jaegertracing/jaeger:2.2.0
+    ports:
+      - "16686:16686" # Web UI
+      - "4318:4318"   # OTLP over HTTP

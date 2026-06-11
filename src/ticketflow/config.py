@@ -11,6 +11,10 @@ TEMPORAL_NAMESPACE = os.environ.get("TEMPORAL_NAMESPACE", "default")
 TASK_QUEUE = os.environ.get("TICKETFLOW_TASK_QUEUE", "ticketflow")
 LOG_FORMAT = os.environ.get("TICKETFLOW_LOG_FORMAT", "text")
 LOG_LEVEL = os.environ.get("TICKETFLOW_LOG_LEVEL", "INFO")
+TRACE_EXPORTER = os.environ.get("TICKETFLOW_TRACE_EXPORTER", "none")
+OTLP_ENDPOINT = os.environ.get(
+    "TICKETFLOW_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
+)
 LOG_FIELDS = [
     field.strip()
     for field in os.environ.get(

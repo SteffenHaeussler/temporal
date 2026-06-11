@@ -10,6 +10,8 @@ def test_config_reads_temporal_settings_from_environment(monkeypatch):
     monkeypatch.setenv("TICKETFLOW_LOG_FORMAT", "json")
     monkeypatch.setenv("TICKETFLOW_LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("TICKETFLOW_LOG_FIELDS", "level,message,task_queue")
+    monkeypatch.setenv("TICKETFLOW_TRACE_EXPORTER", "otlp")
+    monkeypatch.setenv("TICKETFLOW_OTLP_ENDPOINT", "http://otel.example:4318/v1/traces")
 
     reloaded = importlib.reload(config)
 
@@ -19,6 +21,8 @@ def test_config_reads_temporal_settings_from_environment(monkeypatch):
     assert reloaded.LOG_FORMAT == "json"
     assert reloaded.LOG_LEVEL == "DEBUG"
     assert reloaded.LOG_FIELDS == ["level", "message", "task_queue"]
+    assert reloaded.TRACE_EXPORTER == "otlp"
+    assert reloaded.OTLP_ENDPOINT == "http://otel.example:4318/v1/traces"
 
     monkeypatch.delenv("TEMPORAL_ADDRESS")
     monkeypatch.delenv("TEMPORAL_NAMESPACE")
@@ -26,7 +30,14 @@ def test_config_reads_temporal_settings_from_environment(monkeypatch):
     monkeypatch.delenv("TICKETFLOW_LOG_FORMAT")
     monkeypatch.delenv("TICKETFLOW_LOG_LEVEL")
     monkeypatch.delenv("TICKETFLOW_LOG_FIELDS")
+    monkeypatch.delenv("TICKETFLOW_TRACE_EXPORTER")
+    monkeypatch.delenv("TICKETFLOW_OTLP_ENDPOINT")
     importlib.reload(config)
+
+
+def test_config_trace_settings_default_to_disabled():
+    assert config.TRACE_EXPORTER == "none"
+    assert config.OTLP_ENDPOINT == "http://localhost:4318/v1/traces"
 
 
 def test_config_reads_temporal_settings_from_dotenv(tmp_path, monkeypatch):

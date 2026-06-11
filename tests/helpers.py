@@ -4,7 +4,7 @@ import asyncio
 import uuid
 
 from temporalio.client import Client, WorkflowHandle
-from temporalio.worker import Worker
+from temporalio.worker import Worker, WorkflowRunner
 
 from ticketflow.activities import TicketActivities
 from ticketflow.agent.base import Agent, AgentOverloadedError
@@ -92,8 +92,14 @@ class FlakyAgent:
         return await self.inner.draft_reply(ticket, classification)
 
 
-def make_worker(client: Client, agent: Agent, task_queue: str) -> Worker:
+def make_worker(
+    client: Client,
+    agent: Agent,
+    task_queue: str,
+    workflow_runner: WorkflowRunner | None = None,
+) -> Worker:
     acts = TicketActivities(agent)
+    extra = {"workflow_runner": workflow_runner} if workflow_runner else {}
     return Worker(
         client,
         task_queue=task_queue,
@@ -104,6 +110,7 @@ def make_worker(client: Client, agent: Agent, task_queue: str) -> Worker:
             acts.send_reply,
             acts.execute_refund,
         ],
+        **extra,
     )
 
 
