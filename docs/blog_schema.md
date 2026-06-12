@@ -218,7 +218,7 @@ then break it on purpose until you believe it.
 
 - Callback to the hook: the ticket that waited 24 hours and still answered
   `GET /tickets/{id}` the whole time.
-- Invitation: clone it, run `make stack`, kill a worker mid-batch, watch.
+- Invitation: clone it, run `make up`, kill a worker mid-batch, watch.
 
 ---
 
