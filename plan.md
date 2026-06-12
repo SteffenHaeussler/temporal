@@ -380,9 +380,10 @@ without turning into a broad strictness refactor.
 
 ### Optional review follow-ups
 
-- Close the approval timeout race in `_finish`: set the terminal status before
-  final refund/reply activities so late approval updates are rejected instead
-  of accepted and ignored.
+- [x] Close the approval timeout race in `_finish`: set the terminal status
+  before final refund/reply activities so late approval updates are rejected
+  instead of accepted and ignored. Covered by
+  `test_late_approval_after_timeout_is_rejected_while_escalation_finishes`.
 - Scale `scripts/batch.py` polling by checking ticket statuses concurrently
   with bounded concurrency.
 - Make `scripts/doctor.py` fail with a non-zero exit when workers are degraded
