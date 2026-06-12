@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker stack stack-down stack-reset jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
+.PHONY: install install-hooks lint format-check format typecheck check test coverage smoke test-docker server server-docker up down logs stack-reset jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 API_URL ?= http://localhost:8000
@@ -33,6 +33,15 @@ test:
 coverage:
 	uv run pytest --cov=ticketflow --cov-report=term-missing
 
+## --- deployment smoke tests (against a running docker stack) ---
+
+smoke:
+	API_URL=$(API_URL) uv run pytest tests/test_smoke_stack.py -o addopts=
+
+test-docker: up
+	API_URL=$(API_URL) uv run pytest tests/test_smoke_stack.py -o addopts=
+	docker compose down
+
 ## --- run the stack (one target per terminal) ---
 
 server:
@@ -43,11 +52,14 @@ server-docker:
 
 ## --- full stack in docker (server, workers, api in one command) ---
 
-stack:
-	docker compose up --build
+up:
+	docker compose up --build -d
 
-stack-down:
+down:
 	docker compose down
+
+logs:
+	docker compose logs -f
 
 stack-reset:
 	docker compose down -v

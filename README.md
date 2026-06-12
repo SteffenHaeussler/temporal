@@ -94,8 +94,9 @@ Temporal Web UI at http://localhost:8233.
 One command instead of four terminals:
 
 ```bash
-make stack        # builds the app image and starts the whole stack
-make stack-down   # stop it (state survives in named volumes)
+make up           # builds the app image and starts the whole stack (detached)
+make logs         # follow the stack's logs
+make down         # stop it (state survives in named volumes)
 make stack-reset  # stop it and wipe Temporal + read-model state
 ```
 
@@ -112,6 +113,13 @@ process that could host every task queue. The worker is split in two so the
 rate-limited LLM tier scales and fails independently of workflow progress —
 the split is an ops decision, not a requirement. The API and the workflow
 worker share the SQLite read model through a common volume.
+
+Smoke-test the deployment with `make smoke`: it waits until `/ready` reports
+all components healthy, then drives a real ticket through create → settle →
+approve against the running stack. The smoke tests live in
+`tests/test_smoke_stack.py` behind a `smoke` pytest marker, so `make test`
+skips them. `make test-docker` runs the full cycle — `make up`, smoke tests,
+`docker compose down` — and leaves the stack up on failure for debugging.
 
 ## Tracing
 
