@@ -22,15 +22,15 @@ per polling pass. Ticket *creation* already uses bounded concurrency
 (`asyncio.Semaphore`, `scripts/batch.py:104`) — polling should too.
 
 **Steps:**
-- [ ] Check pending ticket statuses concurrently with bounded concurrency,
+- [x] Check pending ticket statuses concurrently with bounded concurrency,
       reusing the `asyncio.Semaphore` pattern from `create_tickets`.
-- [ ] Keep the existing semantics: transient errors leave the ticket pending,
+- [x] Keep the existing semantics: transient errors leave the ticket pending,
       settled statuses remove it, the overall deadline still raises
       `BatchTimeoutError`.
-- [ ] Update the batch script's unit tests for the concurrent path.
+- [x] Update the batch script's unit tests for the concurrent path.
 
 **Verify:**
-- [ ] `make test`.
+- [x] `make test`.
 - [ ] With server/worker/api running: `make batch N=100` completes with a
       histogram summing to 100, noticeably faster polling passes.
 

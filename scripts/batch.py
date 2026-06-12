@@ -118,6 +118,7 @@ async def poll_ticket_statuses(
     *,
     timeout: float,
     poll_interval: float = 1.0,
+    concurrency: int = 10,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, str]:
     """Poll tickets until every id reaches a settled status."""
@@ -125,24 +126,28 @@ async def poll_ticket_statuses(
     statuses: dict[str, str] = {}
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def check_one(ticket_id: str) -> None:
+        async with semaphore:
+            try:
+                response = await client.get(f"/tickets/{ticket_id}")
+            except httpx.TimeoutException:
+                return
+            if response.status_code in TRANSIENT_STATUS_CODES:
+                return
+            response.raise_for_status()
+            status = str(response.json()["status"])
+            statuses[ticket_id] = status
+            if status in SETTLED_STATUSES:
+                pending.remove(ticket_id)
 
     while pending:
         if loop.time() >= deadline:
             waiting = ", ".join(sorted(pending))
             raise BatchTimeoutError(f"Timed out waiting for tickets: {waiting}")
 
-        for ticket_id in sorted(pending):
-            try:
-                response = await client.get(f"/tickets/{ticket_id}")
-            except httpx.TimeoutException:
-                continue
-            if response.status_code in TRANSIENT_STATUS_CODES:
-                continue
-            response.raise_for_status()
-            status = str(response.json()["status"])
-            statuses[ticket_id] = status
-            if status in SETTLED_STATUSES:
-                pending.remove(ticket_id)
+        await asyncio.gather(*(check_one(ticket_id) for ticket_id in sorted(pending)))
 
         if pending:
             await sleep(poll_interval)
@@ -174,6 +179,7 @@ async def run_batch(
             client,
             ticket_ids,
             timeout=timeout,
+            concurrency=concurrency,
         )
     return status_histogram(statuses)
 
