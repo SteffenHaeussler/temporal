@@ -13,8 +13,8 @@ AGENT_TASK_QUEUE = os.environ.get("TICKETFLOW_AGENT_TASK_QUEUE", "ticketflow-age
 FALLBACK_TASK_QUEUE = os.environ.get(
     "TICKETFLOW_FALLBACK_TASK_QUEUE", "ticketflow-agent-fallback"
 )
-AGENT_MAX_PER_SECOND = float(os.environ.get("AGENT_MAX_PER_SECOND", "0.17"))
-AGENT_MAX_CONCURRENT = int(os.environ.get("AGENT_MAX_CONCURRENT", "2"))
+AGENT_MAX_PER_SECOND = float(os.environ.get("AGENT_MAX_PER_SECOND", "10.0"))
+AGENT_MAX_CONCURRENT = int(os.environ.get("AGENT_MAX_CONCURRENT", "20"))
 AGENT_SCHEDULE_TO_START_S = float(os.environ.get("AGENT_SCHEDULE_TO_START_S", "30"))
 MOCK_AGENT_LATENCY_MAX_S = float(os.environ.get("MOCK_AGENT_LATENCY_MAX_S", "0"))
 DB_PATH = os.environ.get("TICKETFLOW_DB_PATH", "ticketflow.db")

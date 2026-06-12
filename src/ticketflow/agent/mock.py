@@ -52,9 +52,9 @@ class MockAgent:
         self,
         seed: int | None = None,
         failure_rate: float = 0.1,
-        refund_rate: float = 0.25,
+        refund_rate: float = 0.10,
         latency_range: tuple[float, float] = (0.0, 0.0),
-        confidence_range: tuple[float, float] = (0.5, 1.0),
+        confidence_range: tuple[float, float] = (0.8, 1.0),
         model: str = "primary",
     ):
         """Create a mock agent with configurable transient failures."""

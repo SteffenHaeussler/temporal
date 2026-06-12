@@ -63,6 +63,27 @@ async def test_reply_only_when_refund_rate_is_zero():
     assert draft.model == "primary"
 
 
+async def test_default_primary_draft_confidence_stays_above_approval_threshold():
+    agent = MockAgent(seed=2, failure_rate=0.0, refund_rate=0.0)
+    ticket = make_ticket(body="the app crashes")
+    classification = Classification(category=TicketCategory.TECHNICAL, confidence=1.0)
+
+    drafts = [await agent.draft_reply(ticket, classification) for _ in range(100)]
+
+    assert min(draft.confidence for draft in drafts) >= 0.8
+
+
+async def test_default_primary_refund_rate_is_about_ten_percent():
+    agent = MockAgent(seed=3, failure_rate=0.0)
+    ticket = make_ticket(subject="Question about account options")
+    classification = Classification(category=TicketCategory.GENERAL, confidence=1.0)
+
+    drafts = [await agent.draft_reply(ticket, classification) for _ in range(1_000)]
+    refund_count = sum(draft.action.type == ActionType.REFUND for draft in drafts)
+
+    assert 70 <= refund_count <= 130
+
+
 async def test_fallback_agent_returns_low_confidence_model_outputs():
     agent = MockAgent.fallback(seed=1)
     ticket = make_ticket(body="the app crashes")
