@@ -1,3 +1,5 @@
+import sqlite3
+
 from temporalio.testing import ActivityEnvironment
 
 from tests.helpers import (
@@ -33,3 +35,24 @@ async def test_side_effect_activities_complete():
     env = ActivityEnvironment()
     await env.run(acts.send_reply, make_ticket(), "hello")
     await env.run(acts.execute_refund, "t1", 42.0)
+
+
+async def test_execute_refund_duplicate_run_refunds_once(tmp_path):
+    agent = ScriptedAgent(billing_classification(), refund_draft())
+    db = str(tmp_path / "read.db")
+    acts = TicketActivities(agent, db_path=db)
+    env = ActivityEnvironment()
+    await env.run(acts.execute_refund, "t1", 42.0)
+    await env.run(acts.execute_refund, "t1", 42.0)
+    conn = sqlite3.connect(db)
+    try:
+        attempts = conn.execute(
+            "SELECT COUNT(*) FROM refund_attempts WHERE ticket_id = 't1'"
+        ).fetchone()[0]
+        refunds = conn.execute(
+            "SELECT COUNT(*) FROM refunds WHERE ticket_id = 't1'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert attempts == 2
+    assert refunds == 1

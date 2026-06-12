@@ -92,8 +92,10 @@ writes. That boundary matters:
 
 - Agent calls can fail transiently and be retried with a backoff policy.
 - Permanent agent errors are converted to non-retryable `ApplicationError`s.
-- Refund execution is documented as idempotent by ticket ID, which is the right
-  shape for an external payment provider idempotency key.
+- Refund execution is idempotent by ticket ID: attempts are logged in a
+  `refund_attempts` table, while the refund itself is recorded at most once in
+  a `refunds` table keyed by ticket ID — the same shape as an external payment
+  provider idempotency key.
 - SQLite writes happen after the workflow reaches a terminal result, making the
   database a derived view of completed workflow state.
 
@@ -163,6 +165,29 @@ readable. Required-field additions break backward compatibility with old
 histories; removals or renames break forward compatibility with producers or
 callers that still send the old shape. Defaults buy both sides enough
 compatibility for old history and new code to coexist.
+
+## At-Least-Once Delivery And Idempotent Side Effects
+
+Temporal activities are at-least-once: when a worker finishes a side effect
+but dies before acking the completion, the server never learns the attempt
+succeeded and schedules a retry — the side effect runs again. This was
+demonstrated by raising after the side effect on attempt 1:
+
+- `record_result` wrote the ticket result to SQLite, failed, and ran again on
+  attempt 2. History showed `ActivityTaskStarted` with `attempt: 2` and
+  `lastFailure: "crash after side effect"`, yet `ticket_results` held exactly
+  one row, because `INSERT OR REPLACE` keyed by ticket ID absorbs the
+  duplicate.
+- `execute_refund` recorded the refund, failed, and logged
+  "already executed; attempt 2 is a no-op" on the retry. `refund_attempts`
+  held two rows (the honest delivery count), `refunds` held one (the effect).
+
+"Exactly-once" is therefore not a delivery guarantee but a sum: at-least-once
+delivery plus idempotent effects. The counter-example makes the danger
+concrete: had `record_result` been a plain `INSERT` plus a counter increment,
+the retry would have double-counted, because retries are routine and every
+non-idempotent side effect silently corrupts data the first time a worker
+dies in the gap between effect and ack.
 
 ## DDIA Connections
 
