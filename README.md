@@ -146,6 +146,16 @@ For the Docker stack, enable the exporter and the Jaeger profile in one go:
 TICKETFLOW_TRACE_EXPORTER=otlp docker compose --profile tracing up --build
 ```
 
+To test the traced Docker stack automatically, run:
+
+```bash
+make test-docker-tracing
+```
+
+This starts the stack with `TICKETFLOW_TRACE_EXPORTER=otlp` and the
+`tracing` compose profile, runs the deployment smoke tests, then verifies that
+Jaeger received Ticketflow spans through its query API.
+
 Create a ticket and open the Jaeger UI at http://localhost:16686: each ticket
 produces one trace from `POST /tickets` through `StartWorkflow:TicketWorkflow`,
 `RunWorkflow:TicketWorkflow`, and a `RunActivity:<name>` span per step

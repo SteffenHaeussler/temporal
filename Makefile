@@ -1,7 +1,8 @@
-.PHONY: install install-hooks lint format-check format typecheck check test coverage smoke test-docker server server-docker up down logs stack-reset jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
+.PHONY: install install-hooks lint format-check format typecheck check test coverage smoke test-docker test-docker-tracing server server-docker up down logs stack-reset jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 API_URL ?= http://localhost:8000
+JAEGER_URL ?= http://localhost:16686
 TEMPORAL_NAMESPACE ?= default
 
 install:
@@ -41,6 +42,12 @@ smoke:
 test-docker: up
 	API_URL=$(API_URL) uv run pytest tests/test_smoke_stack.py -o addopts=
 	docker compose down
+
+test-docker-tracing:
+	TICKETFLOW_TRACE_EXPORTER=otlp COMPOSE_PROFILES=tracing docker compose up --build -d
+	API_URL=$(API_URL) uv run pytest tests/test_smoke_stack.py -o addopts=
+	API_URL=$(API_URL) JAEGER_URL=$(JAEGER_URL) uv run pytest tests/test_tracing_stack.py -o addopts=
+	COMPOSE_PROFILES=tracing docker compose down
 
 ## --- run the stack (one target per terminal) ---
 
