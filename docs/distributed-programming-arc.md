@@ -145,6 +145,25 @@ because the write path and read path have different needs. Temporal history is
 excellent for durable execution and audit. The read model is better for a small
 "what happened to this ticket?" lookup after the workflow is no longer live.
 
+## Payload Schema Evolution
+
+Pydantic models such as `Classification` and `DraftReply` cross the Temporal
+wire as activity inputs and results. Those payloads are stored in workflow
+history for as long as history is retained, and replay decodes old payloads
+with the model code running today.
+
+That makes schema evolution a compatibility contract. Adding a required field
+to `Classification` breaks replay of histories whose recorded
+`classify_ticket` result does not contain that field. The visible symptom is a
+workflow task failure loop: the workflow remains running, but updates and
+queries cannot make progress because replay cannot reconstruct state.
+
+The safe rule is to add optional or defaulted fields and keep old names
+readable. Required-field additions break backward compatibility with old
+histories; removals or renames break forward compatibility with producers or
+callers that still send the old shape. Defaults buy both sides enough
+compatibility for old history and new code to coexist.
+
 ## DDIA Connections
 
 Ticketflow is intentionally small, but it touches several data-intensive system
