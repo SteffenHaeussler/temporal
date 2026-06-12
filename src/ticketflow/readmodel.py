@@ -17,6 +17,14 @@ def _connect(db_path: str) -> sqlite3.Connection:
         "CREATE TABLE IF NOT EXISTS ticket_results ("
         "ticket_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
     )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS refunds ("
+        "ticket_id TEXT PRIMARY KEY, amount REAL NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS refund_attempts ("
+        "ticket_id TEXT NOT NULL, attempt INTEGER NOT NULL)"
+    )
     return conn
 
 
@@ -29,6 +37,30 @@ def save_result(result: TicketResult, db_path: str | None = None) -> None:
                 "INSERT OR REPLACE INTO ticket_results (ticket_id, data) VALUES (?, ?)",
                 (result.ticket_id, result.model_dump_json()),
             )
+    finally:
+        conn.close()
+
+
+def record_refund(
+    ticket_id: str, amount: float, attempt: int, db_path: str | None = None
+) -> bool:
+    """Log a refund attempt; return True only the first time a ticket is refunded.
+
+    The ticket id is the idempotency key: duplicate activity runs land in
+    refund_attempts but the refund itself is recorded at most once.
+    """
+    conn = _connect(_resolve(db_path))
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO refund_attempts (ticket_id, attempt) VALUES (?, ?)",
+                (ticket_id, attempt),
+            )
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO refunds (ticket_id, amount) VALUES (?, ?)",
+                (ticket_id, amount),
+            )
+            return cursor.rowcount == 1
     finally:
         conn.close()
 
@@ -57,6 +89,8 @@ def clear(db_path: str | None = None) -> int:
     try:
         with conn:
             cursor = conn.execute("DELETE FROM ticket_results")
+            conn.execute("DELETE FROM refunds")
+            conn.execute("DELETE FROM refund_attempts")
     finally:
         conn.close()
     return cursor.rowcount

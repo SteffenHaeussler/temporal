@@ -55,10 +55,23 @@ class TicketActivities:
 
     @activity.defn
     async def execute_refund(self, ticket_id: str, amount: float) -> None:
-        """Execute an idempotent refund for a ticket."""
+        """Execute a refund at most once per ticket id."""
         # Idempotent by ticket id: a real implementation would use ticket_id
         # as the payment provider's idempotency key.
-        activity.logger.info("Refunding %.2f for ticket %s", amount, ticket_id)
+        attempt = activity.info().attempt
+        first = await asyncio.to_thread(
+            readmodel.record_refund, ticket_id, amount, attempt, self._db_path
+        )
+        if first:
+            activity.logger.info(
+                "Refunding %.2f for ticket %s (attempt %d)", amount, ticket_id, attempt
+            )
+        else:
+            activity.logger.info(
+                "Refund for ticket %s already executed; attempt %d is a no-op",
+                ticket_id,
+                attempt,
+            )
 
     @activity.defn
     async def record_result(self, result: TicketResult) -> None:

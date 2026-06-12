@@ -207,31 +207,31 @@ ticket ID — but the property has never been demonstrated. Provoke the
 duplicate run once and watch the idempotency absorb it.
 
 **Steps:**
-- [ ] Inject a crash *after* the side effect, *before* the ack: in
+- [x] Inject a crash *after* the side effect, *before* the ack: in
       `record_result`, after `save_result`, temporarily
       `raise RuntimeError("crash after side effect")` when
       `activity.info().attempt == 1`.
-- [ ] Resolve a high-confidence ticket. In the Web UI: attempt 1 fails
+- [x] Resolve a high-confidence ticket. In the Web UI: attempt 1 fails
       *after* writing to SQLite, the retry policy schedules attempt 2, the
       write runs again, the upsert absorbs it.
-- [ ] Confirm effectively-once: exactly one row for the ticket in
+- [x] Confirm effectively-once: exactly one row for the ticket in
       `ticket_results` (`sqlite3 ticketflow.db 'select count(*) ...'`), and
       `make status` returns the correct terminal result.
-- [ ] Make the refund's idempotency observable instead of a comment: record
+- [x] Make the refund's idempotency observable instead of a comment: record
       refund attempts keyed by `ticket_id` (e.g. a tiny
       `refund_attempts` table or log line with the attempt number) and rerun
       the crash experiment on `execute_refund` — second attempt is a no-op,
       "one refund" survives the duplicate run.
-- [ ] Counter-example to feel the danger: imagine the write were
+- [x] Counter-example to feel the danger: imagine the write were
       `INSERT` + counter increment instead of an upsert — the duplicate run
       would double-count. Note in one sentence why retries make
       non-idempotent side effects corrupt data.
-- [ ] Revert the injected crash.
+- [x] Revert the injected crash.
 
 **Verify:**
-- [ ] You saw an activity succeed at its side effect, fail, retry, and leave
+- [x] You saw an activity succeed at its side effect, fail, retry, and leave
       exactly one logical result behind.
-- [ ] `make test` after the revert.
+- [x] `make test` after the revert.
 
 ---
 
