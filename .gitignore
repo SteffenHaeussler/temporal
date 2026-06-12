@@ -219,3 +219,6 @@ __marimo__/
 
 # Ticketflow read model
 ticketflow.db
+
+# macOS
+.DS_Store
