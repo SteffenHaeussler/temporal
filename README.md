@@ -5,6 +5,7 @@ resolves support tickets inside a durable workflow, with conditional
 human-in-the-loop approval for refunds and low-confidence drafts.
 
 Design doc: `docs/superpowers/specs/2026-06-10-ticketflow-design.md`
+Decision log (how and why each piece was built): `docs/context.md`
 
 ## Flow
 
@@ -88,6 +89,30 @@ primary agent path and roughly 5-15 tickets should wait for approval.
 Watch the workflow history, including retries, updates, and timers, in the
 Temporal Web UI at http://localhost:8233.
 
+## Run It in Docker
+
+One command instead of four terminals:
+
+```bash
+make stack        # builds the app image and starts the whole stack
+make stack-down   # stop it (state survives in named volumes)
+make stack-reset  # stop it and wipe Temporal + read-model state
+```
+
+The stack runs the same four processes as the manual flow — Temporal server,
+workflow worker, LLM worker, and the API on http://localhost:8000 — plus a
+one-shot `temporal-init` service that registers the `TicketStatus` search
+attribute, so `make search-attributes` is not needed. Unlike `make server`,
+Temporal state persists across restarts (the dev server writes to a named
+volume). `make doctor`, `make ticket`, `make status`, and `make batch` work
+against the stack unchanged.
+
+Only three services are strictly required: Temporal, the API, and one worker
+process that could host every task queue. The worker is split in two so the
+rate-limited LLM tier scales and fails independently of workflow progress —
+the split is an ops decision, not a requirement. The API and the workflow
+worker share the SQLite read model through a common volume.
+
 ## Tracing
 
 OpenTelemetry tracing is off by default. Enable it with
@@ -105,6 +130,12 @@ the worker and API with the exporter enabled:
 ```bash
 TICKETFLOW_TRACE_EXPORTER=otlp make worker
 TICKETFLOW_TRACE_EXPORTER=otlp make api
+```
+
+For the Docker stack, enable the exporter and the Jaeger profile in one go:
+
+```bash
+TICKETFLOW_TRACE_EXPORTER=otlp docker compose --profile tracing up --build
 ```
 
 Create a ticket and open the Jaeger UI at http://localhost:16686: each ticket

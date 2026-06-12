@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
+.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker stack stack-down stack-reset jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 API_URL ?= http://localhost:8000
@@ -39,7 +39,18 @@ server:
 	temporal server start-dev
 
 server-docker:
-	docker compose up
+	docker compose up temporal temporal-init jaeger
+
+## --- full stack in docker (server, workers, api in one command) ---
+
+stack:
+	docker compose up --build
+
+stack-down:
+	docker compose down
+
+stack-reset:
+	docker compose down -v
 
 jaeger:
 	docker compose up jaeger
