@@ -61,8 +61,8 @@ def test_config_trace_settings_default_to_disabled():
 def test_config_agent_settings_default_to_local_demo_values():
     assert config.AGENT_TASK_QUEUE == "ticketflow-agent"
     assert config.FALLBACK_TASK_QUEUE == "ticketflow-agent-fallback"
-    assert config.AGENT_MAX_PER_SECOND == 0.17
-    assert config.AGENT_MAX_CONCURRENT == 2
+    assert config.AGENT_MAX_PER_SECOND == 10.0
+    assert config.AGENT_MAX_CONCURRENT == 20
     assert config.AGENT_SCHEDULE_TO_START_S == 30.0
     assert config.MOCK_AGENT_LATENCY_MAX_S == 0.0
 

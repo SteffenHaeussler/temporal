@@ -22,11 +22,12 @@ POST /tickets --> TicketWorkflow
                             `- timeout  -> escalation reply -> ESCALATED
 ```
 
-The primary agent is a rate-limited `MockAgent` with random confidence, about
-25% refund proposals, and about 10% transient failures that demonstrate
-activity retries. If an agent task waits too long to start, the workflow reroutes
-it to a fast fallback mock model with lower confidence, so more tickets wait for
-human approval. Both sit behind the `Agent` protocol in
+The primary agent is a rate-limited `MockAgent` tuned for local demos: about
+10% refund proposals, high-confidence non-refund replies, and about 10%
+transient failures that demonstrate activity retries. If an agent task waits
+too long to start, the workflow reroutes it to a fast fallback mock model with
+lower confidence, so fallback tickets visibly wait for human approval. Both sit
+behind the `Agent` protocol in
 `src/ticketflow/agent/base.py`; swap in real LLM-backed implementations later.
 
 ## Run It
@@ -74,6 +75,15 @@ make reject ID=<ID>
 
 The mock agent is random. Check status to see which path a ticket took; refund
 proposals and low-confidence drafts wait for approval.
+
+For a batch demo, run:
+
+```bash
+make batch N=100
+```
+
+With the default local worker settings, a 100-ticket batch should mostly use the
+primary agent path and roughly 5-15 tickets should wait for approval.
 
 Watch the workflow history, including retries, updates, and timers, in the
 Temporal Web UI at http://localhost:8233.

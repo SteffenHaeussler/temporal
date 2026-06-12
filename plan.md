@@ -72,8 +72,9 @@ production knobs and why they differ:
 
 **Steps:**
 - [ ] Config (`config.py`): `TICKETFLOW_AGENT_TASK_QUEUE` (default
-      `ticketflow-agent`), `AGENT_MAX_PER_SECOND` (default `0.17` ≈ 10/min),
-      `AGENT_MAX_CONCURRENT` (default `2`), `MOCK_AGENT_LATENCY_MAX_S`
+      `ticketflow-agent`), `AGENT_MAX_PER_SECOND` (default `10.0` for local
+      batch demos), `AGENT_MAX_CONCURRENT` (default `20`),
+      `MOCK_AGENT_LATENCY_MAX_S`
       (default `0` so tests stay instant).
 - [ ] `MockAgent`: add a `latency_range: tuple[float, float]` and sleep a
       seeded-random duration inside `classify`/`draft` (where the heartbeat
@@ -102,12 +103,12 @@ production knobs and why they differ:
 **Verify:**
 - [ ] `make test`.
 - [ ] Full stack (`make server` / `make worker` / `make llm-worker` /
-      `make api`): `make batch N=100` — the agent queue shows a backlog in
-      the Web UI that drains at ~10 tickets/min while `send_reply` stays
-      instant; histogram still sums to 100.
+      `make api`): `make batch N=100` — the agent queue drains under the
+      local demo defaults while `send_reply` stays instant; histogram still
+      sums to 100.
 - [ ] Start a *second* `make llm-worker`: the combined drain rate stays
-      capped at ~10/min (server-side limit shared across workers); stop it
-      and the rate is unchanged.
+      capped at `AGENT_MAX_PER_SECOND` (server-side limit shared across
+      workers); stop it and the rate is unchanged.
 - [ ] Stop `make llm-worker` entirely mid-batch: tickets park with pending
       activity tasks (visible backpressure), then resume when it restarts.
 
@@ -118,12 +119,12 @@ production knobs and why they differ:
 **Why:** Real LLM stacks fall back to a cheaper/faster model when the primary
 can't respond in time. The Temporal-shaped version of "in time" is
 `schedule_to_start_timeout` — the budget for how long an activity task may
-*wait in the queue* before it's worth rerouting. With the agent queue capped
-at ~10/min, a 100-ticket batch makes tickets near the back wait minutes, so
-the fallback path triggers naturally under load. This also completes the
-timeout family: `start_to_close` (Task 13), `heartbeat` (Task 13), and now
-`schedule_to_start`. Deliberately *not* building: provider registries or
-config-driven fallback chains — two agents, no abstraction.
+*wait in the queue* before it's worth rerouting. The normal local defaults are
+tuned so `make batch N=100` mostly stays on the primary path; lower
+`AGENT_MAX_PER_SECOND` when you want to demonstrate fallback under load. This
+also completes the timeout family: `start_to_close` (Task 13), `heartbeat`
+(Task 13), and now `schedule_to_start`. Deliberately *not* building: provider
+registries or config-driven fallback chains — two agents, no abstraction.
 
 **Steps:**
 - [ ] Add a fallback `MockAgent` flavor: fast (no/low latency), un-throttled,
@@ -150,11 +151,12 @@ config-driven fallback chains — two agents, no abstraction.
 
 **Verify:**
 - [ ] `make test`.
-- [ ] Full stack with both LLM workers: `make batch N=100` — early tickets
-      resolve via the primary, later ones (queue wait > 30s) come back fast
-      via the fallback with lower confidence; the approval inbox grows
-      accordingly. Inspect one fallback ticket's history: the
-      `SCHEDULE_TO_START` timeout, then the activity on the fallback queue.
+- [ ] Full stack with both LLM workers and a deliberately low
+      `AGENT_MAX_PER_SECOND`: `make batch N=100` — early tickets resolve via
+      the primary, later ones (queue wait > 30s) come back fast via the
+      fallback with lower confidence; the approval inbox grows accordingly.
+      Inspect one fallback ticket's history: the `SCHEDULE_TO_START` timeout,
+      then the activity on the fallback queue.
 - [ ] Stop only the primary LLM worker: every new ticket falls back after
       30s instead of hanging — degraded service, not an outage.
 
