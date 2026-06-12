@@ -35,6 +35,10 @@ tracing_interceptor = tracing.interceptor if tracing else None
 logger = logging.getLogger(__name__)
 READINESS_TIMEOUT = timedelta(seconds=2)
 QUERY_TIMEOUT = timedelta(seconds=2)
+TICKET_STATUS_SEARCH_ATTRIBUTE = "TicketStatus"
+MISSING_TICKET_STATUS_SEARCH_ATTRIBUTE_DETAIL = (
+    "search attribute TicketStatus is not registered - run `make search-attributes`"
+)
 
 
 @asynccontextmanager
@@ -100,6 +104,16 @@ def _readiness_config() -> dict[str, str]:
 def _handle(ticket_id: str):
     return app.state.temporal.get_workflow_handle_for(
         TicketWorkflow.run, f"ticket-{ticket_id}"
+    )
+
+
+def _is_missing_ticket_status_search_attribute(exc: RPCError) -> bool:
+    """Return whether Temporal rejected a visibility query for missing setup."""
+    raw_status = exc.raw_grpc_status.decode("utf-8", errors="replace")
+    error_text = f"{exc.message} {raw_status}"
+    return (
+        exc.status == RPCStatusCode.INVALID_ARGUMENT
+        and TICKET_STATUS_SEARCH_ATTRIBUTE in error_text
     )
 
 
@@ -207,10 +221,18 @@ async def list_tickets(status: TicketStatus) -> ListTicketsResponse:
     """List ticket ids with the requested workflow status."""
     query = f'WorkflowType = "TicketWorkflow" and TicketStatus = "{status.value}"'
     ticket_ids = []
-    async for workflow in app.state.temporal.list_workflows(query):
-        workflow_id = workflow.id
-        if workflow_id.startswith("ticket-"):
-            ticket_ids.append(workflow_id.removeprefix("ticket-"))
+    try:
+        async for workflow in app.state.temporal.list_workflows(query):
+            workflow_id = workflow.id
+            if workflow_id.startswith("ticket-"):
+                ticket_ids.append(workflow_id.removeprefix("ticket-"))
+    except RPCError as exc:
+        if _is_missing_ticket_status_search_attribute(exc):
+            raise HTTPException(
+                status_code=503,
+                detail=MISSING_TICKET_STATUS_SEARCH_ATTRIBUTE_DETAIL,
+            ) from exc
+        raise
     return ListTicketsResponse(ticket_ids=ticket_ids)
 
 
