@@ -91,6 +91,18 @@ class FakeWorkflowIterator:
         return self._workflows.pop(0)
 
 
+class FailingWorkflowIterator:
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise RPCError(
+            "invalid search attribute",
+            RPCStatusCode.INVALID_ARGUMENT,
+            b"TicketStatus is not a registered search attribute",
+        )
+
+
 class ListingTemporalClient:
     def __init__(self, workflow_ids: list[str]) -> None:
         self.workflow_ids = workflow_ids
@@ -99,6 +111,11 @@ class ListingTemporalClient:
     def list_workflows(self, query: str):
         self.queries.append(query)
         return FakeWorkflowIterator(self.workflow_ids)
+
+
+class MissingSearchAttributeTemporalClient:
+    def list_workflows(self, _query: str):
+        return FailingWorkflowIterator()
 
 
 async def test_create_ticket_uses_full_uuid_hex_id():
@@ -130,6 +147,21 @@ async def test_list_tickets_filters_by_status_and_returns_ticket_ids():
     assert temporal.queries == [
         'WorkflowType = "TicketWorkflow" and TicketStatus = "awaiting_approval"'
     ]
+
+
+async def test_list_tickets_reports_missing_ticket_status_search_attribute():
+    app.state.temporal = MissingSearchAttributeTemporalClient()
+
+    async with http_client() as http:
+        response = await http.get("/tickets?status=awaiting_approval")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": (
+            "search attribute TicketStatus is not registered - "
+            "run `make search-attributes`"
+        )
+    }
 
 
 async def test_health_returns_alive_status():
