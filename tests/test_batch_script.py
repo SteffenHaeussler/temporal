@@ -104,6 +104,40 @@ async def test_poll_ticket_statuses_stops_when_all_are_settled():
     assert calls == Counter({"one": 2, "two": 1})
 
 
+async def test_poll_ticket_statuses_checks_pending_with_bounded_concurrency():
+    active = 0
+    max_active = 0
+    calls = Counter()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active, max_active
+        ticket_id = request.url.path.rsplit("/", 1)[-1]
+        calls[ticket_id] += 1
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return httpx.Response(200, json={"ticket_id": ticket_id, "status": "resolved"})
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        statuses = await batch.poll_ticket_statuses(
+            client,
+            ["one", "two", "three", "four", "five"],
+            timeout=1.0,
+            poll_interval=0.0,
+            sleep=no_sleep,
+            concurrency=2,
+        )
+
+    assert statuses == {ticket_id: "resolved" for ticket_id in calls}
+    assert calls == Counter({"one": 1, "two": 1, "three": 1, "four": 1, "five": 1})
+    assert max_active == 2
+
+
 async def test_poll_ticket_statuses_retries_transient_status_errors():
     calls = Counter()
 
