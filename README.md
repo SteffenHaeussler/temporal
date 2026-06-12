@@ -11,6 +11,7 @@ Design doc: `docs/superpowers/specs/2026-06-10-ticketflow-design.md`
 ```text
 POST /tickets --> TicketWorkflow
                     classify --> draft reply
+                    (primary agent queue; fallback queue if queued too long)
                        |
         refund proposed OR confidence < 0.75?
               | no                  | yes
@@ -21,10 +22,12 @@ POST /tickets --> TicketWorkflow
                             `- timeout  -> escalation reply -> ESCALATED
 ```
 
-The agent is a `MockAgent` with random confidence, about 25% refund proposals,
-and about 10% transient failures that demonstrate activity retries. It sits
-behind the `Agent` protocol in `src/ticketflow/agent/base.py`; swap in a real
-LLM-backed implementation later.
+The primary agent is a rate-limited `MockAgent` with random confidence, about
+25% refund proposals, and about 10% transient failures that demonstrate
+activity retries. If an agent task waits too long to start, the workflow reroutes
+it to a fast fallback mock model with lower confidence, so more tickets wait for
+human approval. Both sit behind the `Agent` protocol in
+`src/ticketflow/agent/base.py`; swap in real LLM-backed implementations later.
 
 ## Run It
 
@@ -39,15 +42,19 @@ make install
 make server   # terminal 1: Temporal dev server, Web UI at http://localhost:8233
               # or: make server-docker
 make worker   # terminal 2: workflow worker
-make api      # terminal 3: FastAPI app
+make agent-worker  # terminal 3: primary + fallback agent activity workers
+make api      # terminal 4: FastAPI app
 ```
 
-The local demo needs all three long-running processes:
+The local demo needs all four long-running processes:
 
 - `server`: Temporal dev server. It stores workflow state, schedules tasks, and
   hosts the Web UI.
 - `worker`: Python Temporal worker. It polls the `ticketflow` task queue and
-  runs workflow and activity code.
+  runs workflows and fast side-effect activities.
+- `agent-worker`: Python Temporal worker. It polls the primary
+  `ticketflow-agent` queue with a shared rate limit and the unthrottled
+  `ticketflow-agent-fallback` queue.
 - `api`: FastAPI HTTP app. It accepts ticket requests and starts, queries, or
   updates Temporal workflows.
 

@@ -33,8 +33,6 @@ async def main() -> None:
         task_queue=config.TASK_QUEUE,
         workflows=[TicketWorkflow],
         activities=[
-            acts.classify_ticket,
-            acts.draft_reply,
             acts.send_reply,
             acts.execute_refund,
             acts.record_result,

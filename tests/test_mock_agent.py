@@ -10,12 +10,13 @@ def make_ticket(subject: str = "Help", body: str = "Something broke") -> Ticket:
 
 
 async def test_classifies_billing_by_keyword():
-    agent = MockAgent(seed=1, failure_rate=0.0)
+    agent = MockAgent(seed=1, failure_rate=0.0, model="primary")
 
     result = await agent.classify(make_ticket(subject="Please refund my last charge"))
 
     assert result.category == TicketCategory.BILLING
     assert 0.5 <= result.confidence <= 1.0
+    assert result.model == "primary"
 
 
 async def test_classifies_technical_by_keyword():
@@ -59,6 +60,35 @@ async def test_reply_only_when_refund_rate_is_zero():
     assert draft.action.refund_amount is None
     assert draft.reply_text
     assert 0.5 <= draft.confidence <= 1.0
+    assert draft.model == "primary"
+
+
+async def test_fallback_agent_returns_low_confidence_model_outputs():
+    agent = MockAgent.fallback(seed=1)
+    ticket = make_ticket(body="the app crashes")
+
+    classification = await agent.classify(ticket)
+    draft = await agent.draft_reply(ticket, classification)
+
+    assert classification.model == "fallback"
+    assert draft.model == "fallback"
+    assert 0.0 <= classification.confidence <= 0.6
+    assert 0.0 <= draft.confidence <= 0.6
+
+
+async def test_agent_latency_sleeps_within_seeded_range(monkeypatch):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("ticketflow.agent.mock.asyncio.sleep", fake_sleep)
+    agent = MockAgent(seed=1, failure_rate=0.0, latency_range=(1.0, 2.0))
+
+    await agent.classify(make_ticket())
+
+    assert len(sleeps) == 1
+    assert 1.0 <= sleeps[0] <= 2.0
 
 
 async def test_draft_reply_raises_transient_error_when_failure_rate_is_one():

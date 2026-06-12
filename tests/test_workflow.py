@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from contextlib import AsyncExitStack
 
 import pytest
 from temporalio import activity
@@ -7,7 +8,7 @@ from temporalio.client import WorkflowUpdateFailedError, WorkflowUpdateStage
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
+from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from tests.helpers import (
     FlakyAgent,
@@ -24,6 +25,7 @@ from ticketflow.activities import TicketActivities
 from ticketflow.agent.base import AgentOverloadedError, AgentPermanentError
 from ticketflow.models import ApprovalDecision, Ticket, TicketStatus
 from ticketflow.workflows import (
+    AGENT_TASK_QUEUE,
     ESCALATION_REPLY,
     REJECTION_REPLY,
     TICKET_STATUS_ATTR,
@@ -75,18 +77,74 @@ class BlockingTicketActivities(TicketActivities):
 
 
 def make_blocking_reply_worker(client, agent, task_queue, activities):
-    return Worker(
+    workflow_worker = Worker(
         client,
         task_queue=task_queue,
         workflows=[TicketWorkflow],
         activities=[
-            activities.classify_ticket,
-            activities.draft_reply,
             activities.send_reply,
             activities.execute_refund,
             activities.record_result,
         ],
     )
+    agent_worker = Worker(
+        client,
+        task_queue=AGENT_TASK_QUEUE,
+        activities=[
+            activities.classify_ticket,
+            activities.draft_reply,
+        ],
+    )
+    return CombinedTestWorker(workflow_worker, agent_worker)
+
+
+class CombinedTestWorker:
+    def __init__(self, *workers):
+        self._workers = workers
+        self._stack = AsyncExitStack()
+
+    async def __aenter__(self):
+        for worker in self._workers:
+            await self._stack.enter_async_context(worker)
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return await self._stack.__aexit__(exc_type, exc, tb)
+
+
+def make_workflow_only_worker(client, task_queue, agent=None, db_path=None):
+    if agent is None:
+        agent = ScriptedAgent(billing_classification(), reply_only_draft())
+    activities = TicketActivities(agent, db_path=db_path)
+    return Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[TicketWorkflow],
+        activities=[
+            activities.send_reply,
+            activities.execute_refund,
+            activities.record_result,
+        ],
+        workflow_runner=UnsandboxedWorkflowRunner(),
+    )
+
+
+def make_agent_only_worker(client, agent, task_queue):
+    activities = TicketActivities(agent)
+    return Worker(
+        client,
+        task_queue=task_queue,
+        activities=[
+            activities.classify_ticket,
+            activities.draft_reply,
+        ],
+    )
+
+
+def configure_agent_queues(monkeypatch, primary_queue, fallback_queue, timeout_s=1.0):
+    monkeypatch.setattr("ticketflow.workflows.AGENT_TASK_QUEUE", primary_queue)
+    monkeypatch.setattr("ticketflow.workflows.FALLBACK_TASK_QUEUE", fallback_queue)
+    monkeypatch.setattr("ticketflow.workflows.AGENT_SCHEDULE_TO_START_S", timeout_s)
 
 
 async def test_high_confidence_reply_resolves_without_approval(env):
@@ -103,6 +161,63 @@ async def test_high_confidence_reply_resolves_without_approval(env):
     assert result.status == TicketStatus.RESOLVED
     assert result.reply_text == agent.draft.reply_text
     assert result.refund_executed is False
+
+
+async def test_split_agent_workers_resolve_through_primary_model(env, monkeypatch):
+    agent = ScriptedAgent(billing_classification(), reply_only_draft(confidence=0.9))
+    ticket = make_ticket()
+    workflow_queue = unique_queue()
+    primary_queue = unique_queue()
+    fallback_queue = unique_queue()
+    configure_agent_queues(monkeypatch, primary_queue, fallback_queue)
+
+    async with make_workflow_only_worker(env.client, workflow_queue):
+        async with make_agent_only_worker(env.client, agent, primary_queue):
+            result = await env.client.execute_workflow(
+                TicketWorkflow.run,
+                ticket,
+                id=f"ticket-{ticket.id}",
+                task_queue=workflow_queue,
+            )
+
+    assert result.status == TicketStatus.RESOLVED
+    assert result.model_path == "primary/primary"
+
+
+async def test_primary_schedule_to_start_timeout_uses_fallback_queue(env, monkeypatch):
+    primary_agent = ScriptedAgent(
+        billing_classification(model="primary"),
+        reply_only_draft(confidence=0.9, model="primary"),
+    )
+    fallback_agent = ScriptedAgent(
+        billing_classification(confidence=0.5, model="fallback"),
+        reply_only_draft(confidence=0.5, model="fallback"),
+    )
+    ticket = make_ticket()
+    workflow_queue = unique_queue()
+    primary_queue = unique_queue()
+    fallback_queue = unique_queue()
+    configure_agent_queues(monkeypatch, primary_queue, fallback_queue, timeout_s=0.1)
+
+    async with make_workflow_only_worker(env.client, workflow_queue):
+        async with make_agent_only_worker(env.client, fallback_agent, fallback_queue):
+            handle = await env.client.start_workflow(
+                TicketWorkflow.run,
+                ticket,
+                id=f"ticket-{ticket.id}",
+                task_queue=workflow_queue,
+            )
+            await env.sleep(1)
+            info = await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
+
+    assert primary_agent.classify_calls == 0
+    assert fallback_agent.classify_calls == 1
+    assert fallback_agent.draft_calls == 1
+    assert info.classification is not None
+    assert info.classification.model == "fallback"
+    assert info.draft is not None
+    assert info.draft.model == "fallback"
+    assert info.draft.confidence == 0.5
 
 
 async def test_transient_agent_failures_are_retried(env):

@@ -47,6 +47,7 @@ class Classification(BaseModel):
 
     category: TicketCategory
     confidence: float = Field(ge=0.0, le=1.0)
+    model: str = "primary"
 
 
 class ProposedAction(BaseModel):
@@ -69,6 +70,7 @@ class DraftReply(BaseModel):
     reply_text: str
     action: ProposedAction
     confidence: float = Field(ge=0.0, le=1.0)
+    model: str = "primary"
 
 
 class ApprovalDecision(BaseModel):
@@ -86,6 +88,7 @@ class TicketResult(BaseModel):
     status: TicketStatus
     reply_text: str
     refund_executed: bool = False
+    model_path: str = "primary/primary"
 
 
 class TicketStatusInfo(BaseModel):

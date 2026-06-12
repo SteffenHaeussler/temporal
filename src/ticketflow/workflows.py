@@ -6,9 +6,15 @@ from typing import cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy, SearchAttributeKey
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import (
+    ActivityError,
+    ApplicationError,
+    TimeoutError,
+    TimeoutType,
+)
 
 with workflow.unsafe.imports_passed_through():
+    from ticketflow import config
     from ticketflow.activities import TicketActivities
     from ticketflow.models import (
         ActionType,
@@ -26,11 +32,15 @@ APPROVAL_TIMEOUT = timedelta(hours=24)
 ACTIVITY_TIMEOUT = timedelta(seconds=30)
 AGENT_ACTIVITY_TIMEOUT = timedelta(minutes=2)
 AGENT_HEARTBEAT_TIMEOUT = timedelta(seconds=30)
+AGENT_SCHEDULE_TO_START_S = config.AGENT_SCHEDULE_TO_START_S
+AGENT_TASK_QUEUE = config.AGENT_TASK_QUEUE
+FALLBACK_TASK_QUEUE = config.FALLBACK_TASK_QUEUE
 RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
     maximum_attempts=5,
 )
+SINGLE_ATTEMPT_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 
 REJECTION_REPLY = (
     "Thanks for your patience. After review we cannot fulfil this request "
@@ -63,12 +73,9 @@ class TicketWorkflow:
 
         self._set_status(TicketStatus.CLASSIFYING)
         try:
-            self._classification = await workflow.execute_activity_method(
+            self._classification = await self._execute_agent_activity(
                 TicketActivities.classify_ticket,
                 ticket,
-                start_to_close_timeout=AGENT_ACTIVITY_TIMEOUT,
-                heartbeat_timeout=AGENT_HEARTBEAT_TIMEOUT,
-                retry_policy=RETRY_POLICY,
             )
         except ActivityError:
             return await self._finish(
@@ -79,12 +86,9 @@ class TicketWorkflow:
 
         self._set_status(TicketStatus.DRAFTING)
         try:
-            self._draft = await workflow.execute_activity_method(
+            self._draft = await self._execute_agent_activity(
                 TicketActivities.draft_reply,
                 args=[ticket, self._classification],
-                start_to_close_timeout=AGENT_ACTIVITY_TIMEOUT,
-                heartbeat_timeout=AGENT_HEARTBEAT_TIMEOUT,
-                retry_policy=RETRY_POLICY,
             )
         except ActivityError:
             return await self._finish(
@@ -93,13 +97,16 @@ class TicketWorkflow:
                 status=TicketStatus.ESCALATED,
             )
 
+        draft = self._draft
+        if draft is None:
+            raise ApplicationError("draft missing", non_retryable=True)
         needs_approval = (
-            self._draft.action.type == ActionType.REFUND
-            or self._draft.confidence < CONFIDENCE_THRESHOLD
+            draft.action.type == ActionType.REFUND
+            or draft.confidence < CONFIDENCE_THRESHOLD
         )
         if not needs_approval:
             return await self._finish(
-                reply_text=self._draft.reply_text,
+                reply_text=draft.reply_text,
                 refund=False,
                 status=TicketStatus.RESOLVED,
             )
@@ -128,8 +135,8 @@ class TicketWorkflow:
             )
 
         return await self._finish(
-            reply_text=self._draft.reply_text,
-            refund=self._draft.action.type == ActionType.REFUND,
+            reply_text=draft.reply_text,
+            refund=draft.action.type == ActionType.REFUND,
             status=TicketStatus.RESOLVED,
         )
 
@@ -189,6 +196,7 @@ class TicketWorkflow:
             status=status,
             reply_text=reply_text,
             refund_executed=refund,
+            model_path=self._model_path(),
         )
         await workflow.execute_activity_method(
             TicketActivities.record_result,
@@ -198,6 +206,71 @@ class TicketWorkflow:
         )
         return result
 
+    def _model_path(self) -> str:
+        classification_model = (
+            self._classification.model if self._classification else "primary"
+        )
+        draft_model = self._draft.model if self._draft else "primary"
+        return f"{classification_model}/{draft_model}"
+
+    async def _execute_agent_activity(self, activity_method, *args, **kwargs):
+        primary_options = {
+            **kwargs,
+            "task_queue": AGENT_TASK_QUEUE,
+            "schedule_to_start_timeout": timedelta(seconds=AGENT_SCHEDULE_TO_START_S),
+            "start_to_close_timeout": AGENT_ACTIVITY_TIMEOUT,
+            "heartbeat_timeout": AGENT_HEARTBEAT_TIMEOUT,
+            "retry_policy": SINGLE_ATTEMPT_RETRY_POLICY,
+        }
+        delay = RETRY_POLICY.initial_interval
+        for attempt in range(1, RETRY_POLICY.maximum_attempts + 1):
+            try:
+                return await workflow.execute_activity_method(
+                    activity_method,
+                    *args,
+                    **primary_options,
+                )
+            except ActivityError as exc:
+                if _is_schedule_to_start_timeout(exc):
+                    return await _execute_fallback_agent_activity(
+                        activity_method, *args, **kwargs
+                    )
+                if _is_non_retryable_application_error(exc):
+                    raise
+                if attempt == RETRY_POLICY.maximum_attempts:
+                    raise
+                await workflow.sleep(delay)
+                delay *= RETRY_POLICY.backoff_coefficient
+        raise ApplicationError(
+            "agent activity retry loop exhausted", non_retryable=True
+        )
+
     def _set_status(self, status: TicketStatus) -> None:
         self._status = status
         workflow.upsert_search_attributes([TICKET_STATUS_ATTR.value_set(status.value)])
+
+
+def _is_schedule_to_start_timeout(exc: ActivityError) -> bool:
+    return (
+        isinstance(exc.cause, TimeoutError)
+        and exc.cause.type == TimeoutType.SCHEDULE_TO_START
+    )
+
+
+def _is_non_retryable_application_error(exc: ActivityError) -> bool:
+    return isinstance(exc.cause, ApplicationError) and exc.cause.non_retryable
+
+
+async def _execute_fallback_agent_activity(activity_method, *args, **kwargs):
+    fallback_options = {
+        **kwargs,
+        "task_queue": FALLBACK_TASK_QUEUE,
+        "start_to_close_timeout": AGENT_ACTIVITY_TIMEOUT,
+        "heartbeat_timeout": AGENT_HEARTBEAT_TIMEOUT,
+        "retry_policy": RETRY_POLICY,
+    }
+    return await workflow.execute_activity_method(
+        activity_method,
+        *args,
+        **fallback_options,
+    )

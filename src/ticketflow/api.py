@@ -98,6 +98,8 @@ def _readiness_config() -> dict[str, str]:
         "address": config.TEMPORAL_ADDRESS,
         "namespace": config.TEMPORAL_NAMESPACE,
         "task_queue": config.TASK_QUEUE,
+        "agent_task_queue": config.AGENT_TASK_QUEUE,
+        "fallback_task_queue": config.FALLBACK_TASK_QUEUE,
     }
 
 
@@ -118,11 +120,12 @@ def _is_missing_ticket_status_search_attribute(exc: RPCError) -> bool:
 
 
 async def _task_queue_poller_count(
+    task_queue: str,
     task_queue_type: task_queue_enums_pb2.TaskQueueType.ValueType,
 ) -> int:
     request = request_response_pb2.DescribeTaskQueueRequest(
         namespace=config.TEMPORAL_NAMESPACE,
-        task_queue=task_queue_messages_pb2.TaskQueue(name=config.TASK_QUEUE),
+        task_queue=task_queue_messages_pb2.TaskQueue(name=task_queue),
         task_queue_type=task_queue_type,
         report_pollers=True,
     )
@@ -176,12 +179,21 @@ async def ready():
         )
 
     workflow_pollers = await _task_queue_poller_count(
-        task_queue_enums_pb2.TASK_QUEUE_TYPE_WORKFLOW
+        config.TASK_QUEUE, task_queue_enums_pb2.TASK_QUEUE_TYPE_WORKFLOW
     )
     activity_pollers = await _task_queue_poller_count(
-        task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY
+        config.TASK_QUEUE, task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY
+    )
+    primary_agent_pollers = await _task_queue_poller_count(
+        config.AGENT_TASK_QUEUE,
+        task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY,
+    )
+    fallback_agent_pollers = await _task_queue_poller_count(
+        config.FALLBACK_TASK_QUEUE,
+        task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY,
     )
     worker_healthy = workflow_pollers > 0 and activity_pollers > 0
+    agent_worker_healthy = primary_agent_pollers > 0 and fallback_agent_pollers > 0
     worker = {
         "status": "healthy" if worker_healthy else "degraded",
         "task_queue": config.TASK_QUEUE,
@@ -191,10 +203,23 @@ async def ready():
     if not worker_healthy:
         worker["message"] = "No worker pollers found. Run `make worker`."
 
+    agent_worker = {
+        "status": "healthy" if agent_worker_healthy else "degraded",
+        "primary_task_queue": config.AGENT_TASK_QUEUE,
+        "fallback_task_queue": config.FALLBACK_TASK_QUEUE,
+        "primary_activity_pollers": primary_agent_pollers,
+        "fallback_activity_pollers": fallback_agent_pollers,
+    }
+    if not agent_worker_healthy:
+        agent_worker["message"] = (
+            "No agent worker pollers found. Run `make agent-worker`."
+        )
+
     return {
-        "status": "healthy" if worker_healthy else "degraded",
+        "status": "healthy" if worker_healthy and agent_worker_healthy else "degraded",
         "temporal": {"status": "healthy"},
         "worker": worker,
+        "agent_worker": agent_worker,
         "config": _readiness_config(),
     }
 
