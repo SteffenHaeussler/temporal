@@ -210,6 +210,48 @@ def test_status_histogram_counts_statuses_deterministically():
     }
 
 
+def test_model_path_histogram_counts_known_model_paths():
+    histogram = batch.model_path_histogram(
+        {
+            "one": batch.TicketSnapshot(
+                status="resolved", model_path="primary/primary"
+            ),
+            "two": batch.TicketSnapshot(
+                status="awaiting_approval", model_path="fallback/fallback"
+            ),
+            "three": batch.TicketSnapshot(
+                status="awaiting_approval", model_path="fallback/fallback"
+            ),
+            "four": batch.TicketSnapshot(status="escalated", model_path=None),
+        }
+    )
+
+    assert histogram == {
+        "fallback/fallback": 2,
+        "primary/primary": 1,
+        "unknown": 1,
+        "total": 4,
+    }
+
+
+def test_print_histogram_prints_statuses_and_models(capsys):
+    summary = batch.BatchSummary(
+        statuses={"resolved": 1, "total": 1},
+        model_paths={"primary/primary": 1, "total": 1},
+    )
+
+    batch.print_histogram(summary)
+
+    assert capsys.readouterr().out.splitlines() == [
+        "statuses:",
+        "resolved: 1",
+        "total: 1",
+        "model_paths:",
+        "primary/primary: 1",
+        "total: 1",
+    ]
+
+
 async def test_poll_ticket_statuses_times_out():
     async def handler(request: httpx.Request) -> httpx.Response:
         ticket_id = request.url.path.rsplit("/", 1)[-1]

@@ -33,6 +33,18 @@ def test_classification_confidence_must_be_between_zero_and_one():
         Classification(category=TicketCategory.BILLING, confidence=1.1)
 
 
+def test_agent_outputs_default_to_primary_model_for_old_payloads():
+    classification = Classification(category=TicketCategory.BILLING, confidence=0.9)
+    draft = DraftReply(
+        reply_text="Try restarting the app.",
+        action=ProposedAction(type=ActionType.REPLY_ONLY),
+        confidence=0.9,
+    )
+
+    assert classification.model == "primary"
+    assert draft.model == "primary"
+
+
 def test_draft_reply_confidence_must_not_exceed_one():
     with pytest.raises(ValidationError):
         DraftReply(
@@ -59,3 +71,14 @@ def test_approval_decision_requires_approver():
 
     decision = ApprovalDecision(approved=True, approver="sam@example.com")
     assert decision.approver == "sam@example.com"
+
+
+def test_ticket_result_defaults_to_primary_model_path_for_old_payloads():
+    result = TicketResult(
+        ticket_id="t-1",
+        status=TicketStatus.RESOLVED,
+        reply_text="done",
+        refund_executed=False,
+    )
+
+    assert result.model_path == "primary/primary"

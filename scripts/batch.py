@@ -6,6 +6,7 @@ import argparse
 import asyncio
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 
 import httpx
 from temporalio.api.operatorservice.v1 import request_response_pb2
@@ -44,6 +45,22 @@ class BatchTimeoutError(RuntimeError):
 
 class PreflightError(RuntimeError):
     """Raised when the Temporal setup is missing before a batch run."""
+
+
+@dataclass(frozen=True)
+class TicketSnapshot:
+    """Ticket status payload fields used for batch summaries."""
+
+    status: str
+    model_path: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchSummary:
+    """Status and model-path histograms for a batch run."""
+
+    statuses: dict[str, int]
+    model_paths: dict[str, int]
 
 
 async def check_temporal_setup() -> None:
@@ -122,8 +139,29 @@ async def poll_ticket_statuses(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, str]:
     """Poll tickets until every id reaches a settled status."""
+    snapshots = await poll_ticket_snapshots(
+        client,
+        ticket_ids,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        concurrency=concurrency,
+        sleep=sleep,
+    )
+    return {ticket_id: snapshot.status for ticket_id, snapshot in snapshots.items()}
+
+
+async def poll_ticket_snapshots(
+    client: httpx.AsyncClient,
+    ticket_ids: Iterable[str],
+    *,
+    timeout: float,
+    poll_interval: float = 1.0,
+    concurrency: int = 10,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> dict[str, TicketSnapshot]:
+    """Poll tickets until every id settles, preserving status metadata."""
     pending = set(ticket_ids)
-    statuses: dict[str, str] = {}
+    snapshots: dict[str, TicketSnapshot] = {}
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     semaphore = asyncio.Semaphore(concurrency)
@@ -137,8 +175,12 @@ async def poll_ticket_statuses(
             if response.status_code in TRANSIENT_STATUS_CODES:
                 return
             response.raise_for_status()
-            status = str(response.json()["status"])
-            statuses[ticket_id] = status
+            body = response.json()
+            status = str(body["status"])
+            snapshots[ticket_id] = TicketSnapshot(
+                status=status,
+                model_path=_extract_model_path(body),
+            )
             if status in SETTLED_STATUSES:
                 pending.remove(ticket_id)
 
@@ -152,7 +194,7 @@ async def poll_ticket_statuses(
         if pending:
             await sleep(poll_interval)
 
-    return statuses
+    return snapshots
 
 
 def status_histogram(statuses: dict[str, str]) -> dict[str, int]:
@@ -163,31 +205,68 @@ def status_histogram(statuses: dict[str, str]) -> dict[str, int]:
     return histogram
 
 
+def model_path_histogram(snapshots: dict[str, TicketSnapshot]) -> dict[str, int]:
+    """Summarize primary/fallback model paths and include the total count."""
+    counts = Counter(
+        snapshot.model_path or "unknown" for snapshot in snapshots.values()
+    )
+    histogram = {model_path: counts[model_path] for model_path in sorted(counts)}
+    histogram["total"] = len(snapshots)
+    return histogram
+
+
 async def run_batch(
     *,
     count: int,
     base_url: str,
     concurrency: int,
     timeout: float,
-) -> dict[str, int]:
+) -> BatchSummary:
     """Create a batch of tickets and return the settled status histogram."""
     await check_temporal_setup()
     payloads = make_ticket_payloads(count)
     async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
         ticket_ids = await create_tickets(client, payloads, concurrency=concurrency)
-        statuses = await poll_ticket_statuses(
+        snapshots = await poll_ticket_snapshots(
             client,
             ticket_ids,
             timeout=timeout,
             concurrency=concurrency,
         )
-    return status_histogram(statuses)
+    return BatchSummary(
+        statuses=status_histogram(
+            {ticket_id: snapshot.status for ticket_id, snapshot in snapshots.items()}
+        ),
+        model_paths=model_path_histogram(snapshots),
+    )
 
 
-def print_histogram(histogram: dict[str, int]) -> None:
-    """Print a status histogram in CLI-friendly form."""
-    for status, count in histogram.items():
+def print_histogram(summary: BatchSummary) -> None:
+    """Print status and model-path histograms in CLI-friendly form."""
+    print("statuses:")
+    for status, count in summary.statuses.items():
         print(f"{status}: {count}")
+    print("model_paths:")
+    for model_path, count in summary.model_paths.items():
+        print(f"{model_path}: {count}")
+
+
+def _extract_model_path(body: dict[str, object]) -> str | None:
+    result = body.get("result")
+    if isinstance(result, dict):
+        model_path = result.get("model_path")
+        if isinstance(model_path, str):
+            return model_path
+
+    classification = body.get("classification")
+    draft = body.get("draft")
+    classification_model = (
+        classification.get("model") if isinstance(classification, dict) else None
+    )
+    draft_model = draft.get("model") if isinstance(draft, dict) else None
+    if isinstance(classification_model, str) and isinstance(draft_model, str):
+        return f"{classification_model}/{draft_model}"
+    return None
 
 
 def parse_args() -> argparse.Namespace:
