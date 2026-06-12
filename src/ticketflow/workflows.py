@@ -167,6 +167,9 @@ class TicketWorkflow:
     ) -> TicketResult:
         if self._ticket is None:
             raise ApplicationError("workflow has no ticket", non_retryable=True)
+        # Set the terminal status before the final activities so the approval
+        # validator rejects updates that arrive while they are still running.
+        self._set_status(status)
         if refund:
             draft = cast(DraftReply, self._draft)
             await workflow.execute_activity_method(
@@ -181,7 +184,6 @@ class TicketWorkflow:
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=RETRY_POLICY,
         )
-        self._set_status(status)
         result = TicketResult(
             ticket_id=self._ticket.id,
             status=status,

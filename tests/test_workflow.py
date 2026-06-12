@@ -65,10 +65,12 @@ class PermanentlyFailingAgent:
 class BlockingTicketActivities(TicketActivities):
     def __init__(self, agent):
         super().__init__(agent)
+        self.reply_started = asyncio.Event()
         self.release_reply = asyncio.Event()
 
     @activity.defn
     async def send_reply(self, ticket: Ticket, reply_text: str) -> None:
+        self.reply_started.set()
         await self.release_reply.wait()
 
 
@@ -337,7 +339,9 @@ async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(en
             wait_for_stage=WorkflowUpdateStage.ACCEPTED,
             result_type=TicketStatus,
         )
-        await wait_for_status(handle, TicketStatus.AWAITING_APPROVAL)
+        # The terminal status is set as soon as _finish starts, even though
+        # send_reply is still blocked.
+        await wait_for_status(handle, TicketStatus.RESOLVED)
 
         with pytest.raises(WorkflowUpdateFailedError):
             await handle.execute_update(
@@ -356,6 +360,47 @@ async def test_duplicate_approval_update_is_rejected_while_first_is_finishing(en
 
     assert result.status == TicketStatus.RESOLVED
     assert result.refund_executed is True
+
+
+async def test_late_approval_after_timeout_is_rejected_while_escalation_finishes(env):
+    agent = ScriptedAgent(billing_classification(), refund_draft(amount=42.0))
+    ticket = make_ticket()
+    queue = unique_queue()
+    activities = BlockingTicketActivities(agent)
+    async with make_blocking_reply_worker(env.client, agent, queue, activities):
+        handle = await env.client.start_workflow(
+            TicketWorkflow.run,
+            ticket,
+            id=f"ticket-{ticket.id}",
+            task_queue=queue,
+        )
+        # Awaiting the result unlocks time skipping, so the 24h approval
+        # timer fires and _finish blocks inside the gated send_reply.
+        result_task = asyncio.create_task(handle.result())
+        await asyncio.wait_for(activities.reply_started.wait(), timeout=30)
+
+        # The wait_for bound keeps a regression from hanging: an accepted
+        # update would block until the reply is released.
+        with pytest.raises(WorkflowUpdateFailedError):
+            await asyncio.wait_for(
+                handle.execute_update(
+                    TicketWorkflow.submit_approval,
+                    ApprovalDecision(
+                        approved=True,
+                        approver="sam@example.com",
+                        note="too late",
+                    ),
+                    result_type=TicketStatus,
+                ),
+                timeout=10,
+            )
+
+        activities.release_reply.set()
+        result = await result_task
+
+    assert result.status == TicketStatus.ESCALATED
+    assert result.reply_text == ESCALATION_REPLY
+    assert result.refund_executed is False
 
 
 async def test_unanswered_approval_escalates_after_timeout(env):
