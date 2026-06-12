@@ -87,7 +87,7 @@ def make_blocking_reply_worker(client, agent, task_queue, activities):
             activities.record_result,
         ],
     )
-    agent_worker = Worker(
+    llm_worker = Worker(
         client,
         task_queue=AGENT_TASK_QUEUE,
         activities=[
@@ -95,7 +95,7 @@ def make_blocking_reply_worker(client, agent, task_queue, activities):
             activities.draft_reply,
         ],
     )
-    return CombinedTestWorker(workflow_worker, agent_worker)
+    return CombinedTestWorker(workflow_worker, llm_worker)
 
 
 class CombinedTestWorker:
@@ -163,7 +163,7 @@ async def test_high_confidence_reply_resolves_without_approval(env):
     assert result.refund_executed is False
 
 
-async def test_split_agent_workers_resolve_through_primary_model(env, monkeypatch):
+async def test_split_llm_workers_resolve_through_primary_model(env, monkeypatch):
     agent = ScriptedAgent(billing_classification(), reply_only_draft(confidence=0.9))
     ticket = make_ticket()
     workflow_queue = unique_queue()

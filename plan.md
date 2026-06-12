@@ -78,7 +78,7 @@ production knobs and why they differ:
 - [ ] `MockAgent`: add a `latency_range: tuple[float, float]` and sleep a
       seeded-random duration inside `classify`/`draft` (where the heartbeat
       from Task 13 already fires). Seeded RNG, like the failure injection.
-- [ ] New `agent_worker.py` entrypoint: polls the agent queue, registers only
+- [ ] New `llm_worker.py` entrypoint: polls the agent queue, registers only
       `classify_ticket` and `draft_reply`, sets
       `max_concurrent_activities=AGENT_MAX_CONCURRENT` and
       `max_task_queue_activities_per_second=AGENT_MAX_PER_SECOND`, and runs
@@ -90,25 +90,25 @@ production knobs and why they differ:
       options for `classify_ticket` and `draft_reply`. Note: this changes
       replay for open workflows — the Task 12 nondeterminism lesson applies;
       use a clean slate (`make reset`) or gate with `workflow.patched()`.
-- [ ] Makefile: `agent-worker` target (with `MOCK_AGENT_LATENCY_MAX_S=3`);
+- [ ] Makefile: `llm-worker` target (with `MOCK_AGENT_LATENCY_MAX_S=3`);
       add to `.PHONY`; mention it next to `make worker` in the README run
       instructions.
 - [ ] `scripts/doctor.py`: also check for pollers on the agent queue so a
-      forgotten `make agent-worker` is diagnosed, not a silent hang.
+      forgotten `make llm-worker` is diagnosed, not a silent hang.
 - [ ] Tests: workflow test asserting agent activities run on the agent queue;
       existing tests keep instant mocks (latency defaults to 0).
 - [ ] Update `docs/agent-activity-ops.md` from sketch to implemented notes.
 
 **Verify:**
 - [ ] `make test`.
-- [ ] Full stack (`make server` / `make worker` / `make agent-worker` /
+- [ ] Full stack (`make server` / `make worker` / `make llm-worker` /
       `make api`): `make batch N=100` — the agent queue shows a backlog in
       the Web UI that drains at ~10 tickets/min while `send_reply` stays
       instant; histogram still sums to 100.
-- [ ] Start a *second* `make agent-worker`: the combined drain rate stays
+- [ ] Start a *second* `make llm-worker`: the combined drain rate stays
       capped at ~10/min (server-side limit shared across workers); stop it
       and the rate is unchanged.
-- [ ] Stop `make agent-worker` entirely mid-batch: tickets park with pending
+- [ ] Stop `make llm-worker` entirely mid-batch: tickets park with pending
       activity tasks (visible backpressure), then resume when it restarts.
 
 ### Task 4: Fallback model via schedule-to-start timeout
@@ -133,7 +133,7 @@ config-driven fallback chains — two agents, no abstraction.
       `ticketflow-agent-fallback`) and `AGENT_SCHEDULE_TO_START_S`
       (default `30`).
 - [ ] Host the fallback agent: either a third small entrypoint or a second
-      `Worker` in `agent_worker.py`'s asyncio task group — pick whichever
+      `Worker` in `llm_worker.py`'s asyncio task group — pick whichever
       reads cleaner; no rate limit on the fallback queue.
 - [ ] In `TicketWorkflow.run`: call `classify_ticket`/`draft_reply` on the
       primary agent queue with
@@ -150,12 +150,12 @@ config-driven fallback chains — two agents, no abstraction.
 
 **Verify:**
 - [ ] `make test`.
-- [ ] Full stack with both agent workers: `make batch N=100` — early tickets
+- [ ] Full stack with both LLM workers: `make batch N=100` — early tickets
       resolve via the primary, later ones (queue wait > 30s) come back fast
       via the fallback with lower confidence; the approval inbox grows
       accordingly. Inspect one fallback ticket's history: the
       `SCHEDULE_TO_START` timeout, then the activity on the fallback queue.
-- [ ] Stop only the primary agent worker: every new ticket falls back after
+- [ ] Stop only the primary LLM worker: every new ticket falls back after
       30s instead of hanging — degraded service, not an outage.
 
 ### Task 5: Provoke and fix a payload schema-evolution break (DDIA ch. 4)

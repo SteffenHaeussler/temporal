@@ -152,12 +152,12 @@ def make_worker(
             workflows=[TicketWorkflow],
             activities=workflow_activities,
         )
-    agent_worker = Worker(
+    llm_worker = Worker(
         client,
         task_queue=workflows.AGENT_TASK_QUEUE,
         activities=agent_activities,
     )
-    return CombinedWorker(workflow_worker, agent_worker)
+    return CombinedWorker(workflow_worker, llm_worker)
 
 
 async def wait_for_status(

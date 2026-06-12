@@ -1,4 +1,4 @@
-.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker jaeger search-attributes worker agent-worker api doctor ticket status approve reject batch reset
+.PHONY: install install-hooks lint format-check format typecheck check test coverage server server-docker jaeger search-attributes worker llm-worker api doctor ticket status approve reject batch reset
 
 N ?= 100
 API_URL ?= http://localhost:8000
@@ -50,8 +50,8 @@ search-attributes:
 worker:
 	uv run python -m ticketflow.worker
 
-agent-worker:
-	MOCK_AGENT_LATENCY_MAX_S=3 uv run python -m ticketflow.agent_worker
+llm-worker:
+	MOCK_AGENT_LATENCY_MAX_S=3 uv run python -m ticketflow.llm_worker
 
 api:
 	uv run uvicorn ticketflow.api:app --reload
