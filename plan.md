@@ -171,30 +171,30 @@ hangs in a `WorkflowTaskFailed` loop. The production rule to internalize:
 analog of `workflow.patched()`. Throwaway experiment, like Task 12.
 
 **Steps:**
-- [ ] Start a refund ticket so it parks at AWAITING_APPROVAL (its history now
+- [x] Start a refund ticket so it parks at AWAITING_APPROVAL (its history now
       contains a `classify_ticket` result with the *old* schema). Stop the
       worker.
-- [ ] Add a required field to `Classification` in `models.py` (e.g.
+- [x] Add a required field to `Classification` in `models.py` (e.g.
       `language: str`) and supply it in `MockAgent.classify` so new payloads
       are valid.
-- [ ] Restart the worker, `make approve`. Replay decodes the old
+- [x] Restart the worker, `make approve`. Replay decodes the old
       `ActivityTaskCompleted` payload with the new model → `ValidationError`
       → workflow task failure. Observe the `WorkflowTaskFailed` loop in the
       Web UI / worker logs: the workflow stays "Running", the approval never
       lands.
-- [ ] Fix forward: give the field a default (`language: str = "en"`).
+- [x] Fix forward: give the field a default (`language: str = "en"`).
       Restart, approve again — the old payload now validates and the ticket
       resolves.
-- [ ] Note the asymmetry in a short `docs/` note: required-field *additions*
+- [x] Note the asymmetry in a short `docs/` note: required-field *additions*
       break old histories (backward compatibility), removals break any
       consumer still sending them (forward compatibility); defaults buy you
       both.
-- [ ] Revert the experiment.
+- [x] Revert the experiment.
 
 **Verify:**
-- [ ] You saw the replay `ValidationError` loop with your own eyes, and the
+- [x] You saw the replay `ValidationError` loop with your own eyes, and the
       defaulted field resolved it without touching history.
-- [ ] `make test` after the revert.
+- [x] `make test` after the revert.
 
 ### Task 6: Prove at-least-once delivery and idempotent side effects (DDIA ch. 7–8)
 
