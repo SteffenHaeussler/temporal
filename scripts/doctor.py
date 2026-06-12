@@ -58,21 +58,21 @@ async def check_stack(client: httpx.AsyncClient) -> CheckResult:
     config = body.get("config", {})
     temporal = body.get("temporal", {})
     worker = body.get("worker", {})
-    agent_worker = body.get("agent_worker", {})
+    llm_worker = body.get("llm_worker", {})
     temporal_status = str(temporal.get("status", "unknown"))
     worker_status = str(worker.get("status", "unknown"))
-    agent_worker_status = str(agent_worker.get("status", "unknown"))
+    llm_worker_status = str(llm_worker.get("status", "unknown"))
     address = _config_value(config, "address")
     namespace = _config_value(config, "namespace")
 
     lines.append(f"temporal: {temporal_status} ({address}, namespace {namespace})")
     lines.append(_worker_line(worker, config))
-    lines.append(_agent_worker_line(agent_worker, config))
+    lines.append(_llm_worker_line(llm_worker, config))
 
     if worker_status == "degraded":
         lines.append("worker: no pollers found; run `make worker`")
-    if agent_worker_status == "degraded":
-        lines.append("agent-worker: no pollers found; run `make agent-worker`")
+    if llm_worker_status == "degraded":
+        lines.append("llm-worker: no pollers found; run `make llm-worker`")
 
     exit_code = (
         1
@@ -80,7 +80,7 @@ async def check_stack(client: httpx.AsyncClient) -> CheckResult:
             ready.status_code >= 500
             or temporal_status != "healthy"
             or worker_status != "healthy"
-            or agent_worker_status != "healthy"
+            or llm_worker_status != "healthy"
         )
         else 0
     )
@@ -98,26 +98,24 @@ def _worker_line(worker: dict[str, Any], config: dict[str, Any]) -> str:
     )
 
 
-def _agent_worker_line(agent_worker: dict[str, Any], config: dict[str, Any]) -> str:
-    agent_worker_status = str(agent_worker.get("status", "unknown"))
-    if agent_worker_status == "unknown":
-        return "agent-worker: unknown"
+def _llm_worker_line(llm_worker: dict[str, Any], config: dict[str, Any]) -> str:
+    llm_worker_status = str(llm_worker.get("status", "unknown"))
+    if llm_worker_status == "unknown":
+        return "llm-worker: unknown"
     primary_queue = str(
-        agent_worker.get(
-            "primary_task_queue", _config_value(config, "agent_task_queue")
-        )
+        llm_worker.get("primary_task_queue", _config_value(config, "agent_task_queue"))
     )
     fallback_queue = str(
-        agent_worker.get(
+        llm_worker.get(
             "fallback_task_queue", _config_value(config, "fallback_task_queue")
         )
     )
     return (
-        f"agent-worker: {agent_worker_status} "
+        f"llm-worker: {llm_worker_status} "
         f"(primary={primary_queue} "
-        f"pollers={agent_worker.get('primary_activity_pollers', 'unknown')}, "
+        f"pollers={llm_worker.get('primary_activity_pollers', 'unknown')}, "
         f"fallback={fallback_queue} "
-        f"pollers={agent_worker.get('fallback_activity_pollers', 'unknown')})"
+        f"pollers={llm_worker.get('fallback_activity_pollers', 'unknown')})"
     )
 
 

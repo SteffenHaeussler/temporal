@@ -193,7 +193,7 @@ async def ready():
         task_queue_enums_pb2.TASK_QUEUE_TYPE_ACTIVITY,
     )
     worker_healthy = workflow_pollers > 0 and activity_pollers > 0
-    agent_worker_healthy = primary_agent_pollers > 0 and fallback_agent_pollers > 0
+    llm_worker_healthy = primary_agent_pollers > 0 and fallback_agent_pollers > 0
     worker = {
         "status": "healthy" if worker_healthy else "degraded",
         "task_queue": config.TASK_QUEUE,
@@ -203,23 +203,21 @@ async def ready():
     if not worker_healthy:
         worker["message"] = "No worker pollers found. Run `make worker`."
 
-    agent_worker = {
-        "status": "healthy" if agent_worker_healthy else "degraded",
+    llm_worker = {
+        "status": "healthy" if llm_worker_healthy else "degraded",
         "primary_task_queue": config.AGENT_TASK_QUEUE,
         "fallback_task_queue": config.FALLBACK_TASK_QUEUE,
         "primary_activity_pollers": primary_agent_pollers,
         "fallback_activity_pollers": fallback_agent_pollers,
     }
-    if not agent_worker_healthy:
-        agent_worker["message"] = (
-            "No agent worker pollers found. Run `make agent-worker`."
-        )
+    if not llm_worker_healthy:
+        llm_worker["message"] = "No LLM worker pollers found. Run `make llm-worker`."
 
     return {
-        "status": "healthy" if worker_healthy and agent_worker_healthy else "degraded",
+        "status": "healthy" if worker_healthy and llm_worker_healthy else "degraded",
         "temporal": {"status": "healthy"},
         "worker": worker,
-        "agent_worker": agent_worker,
+        "llm_worker": llm_worker,
         "config": _readiness_config(),
     }
 

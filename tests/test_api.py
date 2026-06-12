@@ -186,9 +186,9 @@ async def test_ready_returns_healthy_when_temporal_and_worker_pollers_are_availa
     assert body["worker"]["status"] == "healthy"
     assert body["worker"]["workflow_pollers"] == 2
     assert body["worker"]["activity_pollers"] == 1
-    assert body["agent_worker"]["status"] == "healthy"
-    assert body["agent_worker"]["primary_activity_pollers"] == 1
-    assert body["agent_worker"]["fallback_activity_pollers"] == 1
+    assert body["llm_worker"]["status"] == "healthy"
+    assert body["llm_worker"]["primary_activity_pollers"] == 1
+    assert body["llm_worker"]["fallback_activity_pollers"] == 1
     assert body["config"]["address"] == config.TEMPORAL_ADDRESS
     assert body["config"]["namespace"] == config.TEMPORAL_NAMESPACE
     assert body["config"]["task_queue"] == config.TASK_QUEUE
@@ -224,13 +224,13 @@ async def test_ready_reports_degraded_when_worker_pollers_are_missing():
         "activity_pollers": 0,
         "message": "No worker pollers found. Run `make worker`.",
     }
-    assert body["agent_worker"] == {
+    assert body["llm_worker"] == {
         "status": "degraded",
         "primary_task_queue": config.AGENT_TASK_QUEUE,
         "fallback_task_queue": config.FALLBACK_TASK_QUEUE,
         "primary_activity_pollers": 0,
         "fallback_activity_pollers": 0,
-        "message": "No agent worker pollers found. Run `make agent-worker`.",
+        "message": "No LLM worker pollers found. Run `make llm-worker`.",
     }
 
 

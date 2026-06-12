@@ -1,4 +1,4 @@
-"""Agent worker entrypoint: hosts primary and fallback agent activities."""
+"""LLM worker entrypoint: hosts primary and fallback agent activities."""
 
 import asyncio
 import logging
@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    """Run primary and fallback agent workers until interrupted."""
+    """Run primary and fallback LLM workers until interrupted."""
     setup_logging()
-    interceptor = setup_tracing(service_name="ticketflow-agent-worker")
+    interceptor = setup_tracing(service_name="ticketflow-llm-worker")
     client = await Client.connect(
         config.TEMPORAL_ADDRESS,
         namespace=config.TEMPORAL_NAMESPACE,
@@ -55,7 +55,7 @@ async def main() -> None:
     )
 
     logger.info(
-        "Agent workers running",
+        "LLM workers running",
         extra={
             "primary_task_queue": config.AGENT_TASK_QUEUE,
             "fallback_task_queue": config.FALLBACK_TASK_QUEUE,

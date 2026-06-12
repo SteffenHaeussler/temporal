@@ -42,7 +42,7 @@ make install
 make server   # terminal 1: Temporal dev server, Web UI at http://localhost:8233
               # or: make server-docker
 make worker   # terminal 2: workflow worker
-make agent-worker  # terminal 3: primary + fallback agent activity workers
+make llm-worker  # terminal 3: primary + fallback LLM activity workers
 make api      # terminal 4: FastAPI app
 ```
 
@@ -52,7 +52,7 @@ The local demo needs all four long-running processes:
   hosts the Web UI.
 - `worker`: Python Temporal worker. It polls the `ticketflow` task queue and
   runs workflows and fast side-effect activities.
-- `agent-worker`: Python Temporal worker. It polls the primary
+- `llm-worker`: Python Temporal worker. It polls the primary
   `ticketflow-agent` queue with a shared rate limit and the unthrottled
   `ticketflow-agent-fallback` queue.
 - `api`: FastAPI HTTP app. It accepts ticket requests and starts, queries, or
